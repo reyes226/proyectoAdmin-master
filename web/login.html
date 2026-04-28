@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Login | Sistema Institucional</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+    <!-- Barra institucional -->
+    <header class="top-header">
+        <h2>Sistema Institucional de Control de Asistencias</h2>
+    </header>
+
+    <!-- Contenedor principal -->
+    <main class="login-main">
+        <div class="login-card">
+            
+            <img src="assets/img/logo_buap.png" class="logo">
+            <h2 class="institucion">Benemérita Universidad Autónoma de Puebla</h2>
+
+            <h3 class="facultad">Facultad de Administración</h3>
+            
+            <h1 class="titulo">Sistema de Control de Asistencias</h1>
+
+            <div class="input-group">
+                <input type="text" id="usuario" placeholder="Usuario">
+            </div>
+
+            <div class="input-group password-group">
+                <input type="password" id="password" placeholder="Contraseña">
+                <span class="toggle-password" onclick="togglePassword()">👁</span>
+            </div>
+
+            <button class="btn-primary" onclick="login()">Ingresar</button>
+
+            <p id="error" class="error"></p>
+
+        </div>
+    </main>
+
+    <footer class="footer">
+    © 2026 Benemérita Universidad Autónoma de Puebla  
+    Facultad de Administración
+</footer>
+
+    <script src="js/auth.js"></script>
+</body>
+</html>

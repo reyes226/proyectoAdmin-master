@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Panel de Administración</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<div class="topbar">
+    <div class="topbar-left">
+        <img src="assets/img/escudo_buap_negativo.png" alt="BUAP" class="topbar-logo">
+        <div class="topbar-titles">
+            <span class="inst">Facultad de Administración · BUAP</span>
+            <span class="title">Panel de Administración</span>
+        </div>
+    </div>
+    <div class="topbar-right">
+        <a class="btn-nav" href="holidays-admin.html">Gestionar Días Inhabiles</a>
+        <a class="btn-nav" href="dashboard.html">Ver Dashboard</a>
+        <button onclick="logout()">Cerrar sesión</button>
+    </div>
+</div>
+
+<div class="wrapper">
+
+    <!-- ── Procesar nuevo mes ── -->
+    <div class="card">
+        <div class="card-header">
+            <h2>Procesar nuevo mes</h2>
+            <p>Sube los archivos Excel para generar las estadísticas. Si el mes ya existe, se sobreescribirá.</p>
+        </div>
+
+        <div class="upload-grid">
+            <div class="file-field">
+                <label>Horario oficial</label>
+                <div class="file-drop" id="drop-horario">
+                    <input type="file" accept=".xlsx" id="file-horario"
+                           onchange="onFileSelect('horario', this)">
+                    <div class="drop-label">Selecciona o arrastra el archivo</div>
+                    <div class="drop-hint">.xlsx · Horario_oficial</div>
+                    <div class="drop-name" id="name-horario"></div>
+                </div>
+            </div>
+            <div class="file-field">
+                <label>Registro de asistencia</label>
+                <div class="file-drop" id="drop-registro">
+                    <input type="file" accept=".xlsx" id="file-registro"
+                           onchange="onFileSelect('registro', this)">
+                    <div class="drop-label">Selecciona o arrastra el archivo</div>
+                    <div class="drop-hint">.xlsx · REGISTRO ASISTENCIA</div>
+                    <div class="drop-name" id="name-registro"></div>
+                </div>
+            </div>
+        </div>
+
+        <button class="btn-process" id="btn-process" onclick="procesarArchivos()" disabled>
+            Procesar archivos
+        </button>
+
+        <div class="status-box" id="status-box">
+            <span id="status-text"></span>
+            <div class="progress-wrap" id="progress-wrap" style="display:none">
+                <div class="progress-bar" id="progress-bar"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Meses disponibles ── -->
+    <div class="section-divider"><h2>Meses registrados</h2></div>
+
+    <div class="card">
+        <div id="mes-list-container">
+            <p class="empty-state">Cargando...</p>
+        </div>
+    </div>
+
+</div>
+
+<script src="js/auth.js"></script>
+<script>
+
+const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
+               'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+let _files = { horario: null, registro: null };
+
+const XLSX_MIMES = new Set([
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/octet-stream',
+    'application/zip',
+    '', // algunos navegadores no envían MIME para archivos locales
+]);
+
+function validarArchivoXlsx(file) {
+    if (!file.name.toLowerCase().endsWith('.xlsx')) return false;
+    if (file.type && !XLSX_MIMES.has(file.type)) return false;
+    return true;
+}
+
+// ── Selección de archivos ──
+function onFileSelect(tipo, input) {
+    const file = input.files[0];
+    if (!file) return;
+    if (!validarArchivoXlsx(file)) {
+        alert('Solo se aceptan archivos .xlsx');
+        input.value = '';
+        return;
+    }
+    _files[tipo] = file;
+    document.getElementById(`drop-${tipo}`).classList.add('selected');
+    document.getElementById(`name-${tipo}`).textContent = file.name;
+    document.getElementById('btn-process').disabled = !(_files.horario && _files.registro);
+}
+
+// ── Drag & drop ──
+['horario', 'registro'].forEach(tipo => {
+    const drop = document.getElementById(`drop-${tipo}`);
+    drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('drag-over'); });
+    drop.addEventListener('dragleave', () => drop.classList.remove('drag-over'));
+    drop.addEventListener('drop', e => {
+        e.preventDefault();
+        drop.classList.remove('drag-over');
+        const file = e.dataTransfer.files[0];
+        if (!file || !validarArchivoXlsx(file)) return;
+        const input = document.getElementById(`file-${tipo}`);
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        input.files = dt.files;
+        onFileSelect(tipo, input);
+    });
+});
+
+// ── Procesar ──
+async function procesarArchivos() {
+    const btn  = document.getElementById('btn-process');
+    const box  = document.getElementById('status-box');
+    const txt  = document.getElementById('status-text');
+    const wrap = document.getElementById('progress-wrap');
+    const bar  = document.getElementById('progress-bar');
+
+    btn.disabled = true;
+    box.className = 'status-box loading';
+    box.style.display = 'block';
+    txt.textContent = 'Procesando archivos... esto puede tardar unos segundos';
+    wrap.style.display = 'block';
+    bar.style.width = '0%';
+
+    let prog = 0;
+    const ticker = setInterval(() => {
+        prog = Math.min(prog + Math.random() * 7, 85);
+        bar.style.width = prog + '%';
+    }, 300);
+
+    const form = new FormData();
+    form.append('horario',  _files.horario);
+    form.append('registro', _files.registro);
+
+    try {
+        const res = await fetch('/api/upload', {
+            method:  'POST',
+            headers: { 'X-CSRF-Token': getCsrfToken() },
+            body:    form,
+        });
+        clearInterval(ticker);
+        bar.style.width = '100%';
+
+        let data;
+        try {
+            data = await res.json();
+        } catch {
+            box.className = 'status-box error';
+            txt.textContent = `Error del servidor (${res.status}). Revisa la consola del servidor.`;
+            btn.disabled = false;
+            setTimeout(() => { wrap.style.display = 'none'; }, 900);
+            return;
+        }
+
+        if (!res.ok || data.error) {
+            box.className = 'status-box error';
+            txt.textContent = 'Error: ' + (data.error || 'Error desconocido');
+        } else {
+            const [anio, numMes] = data.mes.split('_');
+            const nombre = `${MESES[parseInt(numMes) - 1]} ${anio}`;
+            box.className = 'status-box success';
+            txt.textContent = `Mes de ${nombre} procesado correctamente.`;
+            resetInputs();
+            cargarMeses();
+        }
+    } catch (err) {
+        clearInterval(ticker);
+        box.className = 'status-box error';
+        txt.textContent = 'No se pudo conectar al servidor: ' + err.message;
+    }
+
+    btn.disabled = false;
+    setTimeout(() => { wrap.style.display = 'none'; }, 900);
+}
+
+function resetInputs() {
+    _files = { horario: null, registro: null };
+    ['horario', 'registro'].forEach(t => {
+        document.getElementById(`drop-${t}`).classList.remove('selected');
+        document.getElementById(`name-${t}`).textContent = '';
+        document.getElementById(`file-${t}`).value = '';
+    });
+    document.getElementById('btn-process').disabled = true;
+}
+
+// ── Lista de meses ──
+async function cargarMeses() {
+    const container = document.getElementById('mes-list-container');
+    try {
+        const res   = await fetch('/api/meses');
+        if (res.status === 401) { window.location.href = 'login.html'; return; }
+        const meses = await res.json();
+
+        if (!meses.length) {
+            container.innerHTML = '<p class="empty-state">No hay meses procesados aún.</p>';
+            return;
+        }
+
+        const items = meses.map(mes => {
+            const [anio, numMes] = mes.split('_');
+            const nombre = `${MESES[parseInt(numMes) - 1]} ${anio}`;
+            return `
+            <div class="mes-item" id="item-${mes}">
+                <div>
+                    <div class="mes-nombre">${nombre}</div>
+                    <div class="mes-sub">${anio}-${numMes}</div>
+                </div>
+                <div class="mes-actions">
+                    <a class="btn-ver" href="dashboard.html?mes=${mes}">Ver Dashboard</a>
+                    <button class="btn-del" onclick="eliminarMes('${mes}','${nombre}')">Eliminar</button>
+                </div>
+            </div>`;
+        }).join('');
+
+        container.innerHTML = `<div class="mes-list">${items}</div>`;
+    } catch {
+        container.innerHTML = '<p class="empty-state">Error al cargar los meses.</p>';
+    }
+}
+
+async function eliminarMes(mes, nombre) {
+    if (!confirm(`¿Eliminar los datos de ${nombre}?\nEsta acción no se puede deshacer.`)) return;
+    try {
+        const res = await fetch(`/api/delete/${mes}`, {
+            method:  'DELETE',
+            headers: { 'X-CSRF-Token': getCsrfToken() },
+        });
+        if (res.status === 401) { window.location.href = 'login.html'; return; }
+        if ((await res.json()).ok) {
+            document.getElementById(`item-${mes}`)?.remove();
+            const lista = document.querySelector('.mes-list');
+            if (lista && !lista.children.length)
+                document.getElementById('mes-list-container').innerHTML =
+                    '<p class="empty-state">No hay meses procesados aún.</p>';
+        }
+    } catch (e) {
+        alert('Error al eliminar: ' + e.message);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+    const sesion = await verificarSesion('ADMIN');
+    if (sesion) cargarMeses();
+});
+</script>
+</body>
+</html>

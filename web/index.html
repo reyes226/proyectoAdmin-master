@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Sistema de Asistencias</title>
+</head>
+<body>
+<script>
+(async function () {
+    try {
+        const res = await fetch('/api/whoami');
+        if (res.status === 401) {
+            window.location.href = 'login.html';
+            return;
+        }
+        const data = await res.json();
+        if (!data.authenticated) {
+            window.location.href = 'login.html';
+        } else if (data.rol === 'ADMIN') {
+            window.location.href = 'admin.html';
+        } else {
+            window.location.href = 'dashboard.html';
+        }
+    } catch {
+        window.location.href = 'login.html';
+    }
+})();
+</script>
+</body>
+</html>
