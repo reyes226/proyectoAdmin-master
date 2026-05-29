@@ -1,0 +1,20 @@
+# Credenciales — NUNCA commitear
+config/users.json
+
+# Archivos subidos y generados
+procesamiento/uploads/
+output/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.env
+venv/
+.venv/
+*.egg-info/
+
+# Sistema
+.DS_Store
+Thumbs.db
+.claude

@@ -1,0 +1,1128 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Dashboard de Asistencia</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+
+</head>
+<body>
+
+<div class="topbar">
+    <div class="topbar-left">
+        <img src="assets/img/escudo_buap_negativo.png" alt="BUAP" class="topbar-logo">
+        <div class="topbar-titles">
+            <span class="inst">Facultad de Administración · BUAP</span>
+            <span class="title">Dashboard de Asistencia Docente</span>
+        </div>
+    </div>
+    <div class="topbar-right">
+        <button class="export-btn" onclick="exportarPDF()">Exportar PDF</button>
+        <button id="dias-btn" class="export-btn" onclick="abrirModalDiasInhabiles()" style="display:none;">Gestionar Días Inhabiles</button>
+        <span id="admin-link-container"></span>
+        <button onclick="logout()">Cerrar sesión</button>
+    </div>
+</div>
+
+<div class="dashboard-wrapper">
+
+    <!-- Filtros -->
+    <div class="filters">
+        <div class="filter-group">
+            <label>Mes</label>
+            <select id="mes-select" onchange="cambiarMes(this.value)">
+                <option value="">Cargando meses...</option>
+            </select>
+        </div>
+        <div class="filter-group">
+            <label>Periodo</label>
+            <div class="tab-group">
+                <button class="tab-btn active" onclick="setPeriodo('general',this)">General</button>
+                <button class="tab-btn" onclick="setPeriodo('quincena_1',this)">Quincena 1</button>
+                <button class="tab-btn" onclick="setPeriodo('quincena_2',this)">Quincena 2</button>
+            </div>
+        </div>
+        <div class="filter-group">
+            <label>Maestro</label>
+            <select id="teacher-select" onchange="setMaestro(this.value)">
+                <option value="">— Todos los maestros —</option>
+            </select>
+        </div>
+        <div class="filter-group">
+            <label>Buscar</label>
+            <input class="search-input" type="text" placeholder="Nombre del maestro..." oninput="setSearch(this.value)">
+        </div>
+    </div>
+
+    <!-- Tarjetas de resumen -->
+    <div class="stats-grid" id="stats-grid"></div>
+
+    <!-- Dona + Tabla -->
+    <div class="main-content">
+        <div class="chart-panel">
+            <h3 id="chart-title">Distribución General</h3>
+            <p class="chart-subtitle" id="chart-subtitle"></p>
+            <canvas id="pie-chart"></canvas>
+            <div class="legend" id="pie-legend"></div>
+        </div>
+        <div class="table-panel">
+            <h3 id="table-title">Detalle por Maestro</h3>
+            <div id="table-container"><p class="no-results">Cargando datos...</p></div>
+        </div>
+    </div>
+
+    <!-- Análisis comparativo -->
+    <div class="section-divider"><h2>Análisis Comparativo — Maestros por porcentaje de falta</h2></div>
+    <div class="chart-full-panel">
+        <h3>Comparativa de Asistencia por Maestro</h3>
+        <p class="panel-subtext">
+            Ordenados de mayor a menor porcentaje de faltas &nbsp;·&nbsp; Periodo: <span id="comp-periodo-label">General</span>
+        </p>
+        <div class="bar-controls">
+            <button class="bar-btn" onclick="setBarLimit(10,this)">Top 10</button>
+            <button class="bar-btn active" onclick="setBarLimit(20,this)">Top 20</button>
+            <button class="bar-btn" onclick="setBarLimit(0,this)">Todos</button>
+        </div>
+        <div class="bar-container" id="bar-container" style="height:520px;">
+            <canvas id="bar-chart"></canvas>
+        </div>
+    </div>
+
+    <!-- Tendencia semanal -->
+    <div id="week-section" style="display:none;">
+        <div class="section-divider"><h2>Tendencia por Día de Semana</h2></div>
+        <div class="week-panel">
+            <h3>Registros totales por día (todos los maestros)</h3>
+            <p class="panel-subtext">Identifica qué días concentran más faltas</p>
+            <canvas id="week-chart" height="110"></canvas>
+        </div>
+    </div>
+
+    <!-- Top maestros puntuales -->
+    <div class="section-divider"><h2>Maestros con Mayor Porcentaje de Asistencia</h2></div>
+    <div class="chart-full-panel">
+        <h3>Top Maestros Más Puntuales</h3>
+        <p class="panel-subtext">
+            Ordenados de mayor a menor porcentaje de asistencia &nbsp;·&nbsp; Periodo: <span id="puntual-periodo-label">General</span>
+        </p>
+        <div class="bar-controls">
+            <button class="puntual-btn" onclick="setTopPuntualLimit(10,this)">Top 10</button>
+            <button class="puntual-btn active" onclick="setTopPuntualLimit(20,this)">Top 20</button>
+            <button class="puntual-btn" onclick="setTopPuntualLimit(0,this)">Todos</button>
+        </div>
+        <div class="bar-container" id="puntual-container" style="height:520px;">
+            <canvas id="top-puntual-chart"></canvas>
+        </div>
+    </div>
+
+</div>
+
+<!-- Modal Días Inhabiles -->
+<div id="modal-dias-inhabiles" class="modal" style="display:none;">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>Gestionar Días Inhabiles</h2>
+            <button class="modal-close" onclick="cerrarModalDiasInhabiles()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <p style="margin-bottom:15px; color:#666;">Los días inhabiles son aquellos en los que no hay actividades laborales y los profesores no asisten.</p>
+            
+            <div class="dias-form-section">
+                <h3>Agregar Día Inhabible</h3>
+                <div style="display:flex; gap:10px; margin-bottom:20px;">
+                    <input type="date" id="fecha-input" placeholder="Selecciona una fecha">
+                    <button class="btn-primary" onclick="agregarDiaInhabible()">Agregar</button>
+                </div>
+                <div id="resultado-mensaje" style="display:none; padding:10px; border-radius:4px; margin-bottom:10px;"></div>
+            </div>
+            
+            <div class="dias-list-section">
+                <h3>Días Inhabiles Registrados</h3>
+                <div id="dias-list" style="max-height:300px; overflow-y:auto; border:1px solid #ddd; border-radius:4px; padding:10px;">
+                    <p style="color:#999; text-align:center;">Cargando...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="js/auth.js"></script>
+<script>
+
+// ── Estado global ──
+let _data = null, _mes = '', _periodo = 'general', _maestro = '', _search = '', _barLimit = 20, _topPuntualLimit = 20;
+let _sort = { col: null, dir: 1 };
+let _pieChart = null, _barChart = null, _weekChart = null, _topPuntualChart = null;
+
+const MESES_NOMBRES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
+                       'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+// ── Carga inicial: meses disponibles ──
+async function inicializar() {
+    // Leer parámetro ?mes= de la URL
+    const urlMes = new URLSearchParams(window.location.search).get('mes');
+
+    try {
+        const res   = await fetch('/api/meses');
+        if (res.status === 401) { window.location.href = 'login.html'; return; }
+        const meses = await res.json();
+
+        const sel = document.getElementById('mes-select');
+        if (!meses.length) {
+            sel.innerHTML = '<option value="">No hay meses disponibles</option>';
+            document.getElementById('table-container').innerHTML =
+                '<p class="no-results">No hay datos procesados. Ve al Panel de Administración para subir archivos.</p>';
+            return;
+        }
+
+        sel.innerHTML = meses.map(m => {
+            const [anio, num] = m.split('_');
+            const nombre = `${MESES_NOMBRES[parseInt(num) - 1]} ${anio}`;
+            return `<option value="${m}">${nombre}</option>`;
+        }).join('');
+
+        // Seleccionar mes de URL o el más reciente
+        _mes = (urlMes && meses.includes(urlMes)) ? urlMes : meses[0];
+        sel.value = _mes;
+
+        await cargarDatosMes();
+    } catch(e) {
+        document.getElementById('table-container').innerHTML =
+            '<p class="no-results">Error al conectar con el servidor.</p>';
+    }
+}
+
+async function cambiarMes(mes) {
+    _mes = mes;
+    _maestro = '';
+    document.getElementById('teacher-select').value = '';
+    document.getElementById('teacher-select').innerHTML = '<option value="">— Todos los maestros —</option>';
+    await cargarDatosMes();
+}
+
+async function cargarDatosMes() {
+    if (!_mes) return;
+    document.getElementById('table-container').innerHTML = '<p class="no-results">Cargando...</p>';
+    try {
+        const res = await fetch(`/output/data_${_mes}.json`);
+        if (res.status === 401) { window.location.href = 'login.html'; return; }
+        _data = await res.json();
+        populateTeacherDropdown();
+        render();
+        renderComparativeChart();
+        renderWeekChart();
+        renderTopPuntualChart();
+    } catch(e) {
+        document.getElementById('table-container').innerHTML =
+            '<p class="no-results">No se pudo cargar los datos del mes seleccionado.</p>';
+    }
+}
+
+function populateTeacherDropdown() {
+    const sel = document.getElementById('teacher-select');
+    _data.por_profesor
+        .slice()
+        .sort((a,b) => a.PROFESOR.localeCompare(b.PROFESOR))
+        .forEach(p => {
+            const o = document.createElement('option');
+            o.value = p.PROFESOR;
+            o.textContent = p.PROFESOR;
+            sel.appendChild(o);
+        });
+}
+
+// ── Filtros ──
+function setPeriodo(p, btn) {
+    _periodo = p;
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const label = p === 'general' ? 'General' : p === 'quincena_1' ? 'Quincena 1' : 'Quincena 2';
+    document.getElementById('comp-periodo-label').textContent    = label;
+    document.getElementById('puntual-periodo-label').textContent = label;
+    render();
+    renderComparativeChart();
+    renderTopPuntualChart();
+}
+function setMaestro(v) { _maestro = v; render(); }
+function setSearch(v)  { _search = v.toUpperCase(); renderTable(); }
+function setBarLimit(n, btn) {
+    _barLimit = n;
+    document.querySelectorAll('.bar-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    renderComparativeChart();
+}
+function toggleSort(col) {
+    _sort.dir = (_sort.col === col) ? _sort.dir * -1 : 1;
+    _sort.col = col;
+    renderTable();
+}
+
+// ── Helpers ──
+function getD(p) {
+    return _periodo === 'general' ? p.general
+         : _periodo === 'quincena_1' ? p.quincena_1
+         : p.quincena_2;
+}
+function pct(v, t) { return t ? ((v/t)*100).toFixed(1)+'%' : '0%'; }
+function pctNum(v, t) { return t ? (v/t)*100 : 0; }
+
+function semaforo(p, t, total) {
+    const a = total ? ((p+t)/total)*100 : 0;
+    const cls = a >= 80 ? 'sem-green' : a >= 60 ? 'sem-yellow' : 'sem-red';
+    const tip = a >= 80 ? 'Asistencia buena' : a >= 60 ? 'Asistencia regular' : 'Asistencia baja';
+    return `<span class="sem ${cls}" title="${tip}"></span>`;
+}
+
+function sortIcon(col) {
+    if (_sort.col !== col) return '<span class="sort-icon">⇅</span>';
+    return _sort.dir === 1 ? '<span class="sort-icon">▲</span>' : '<span class="sort-icon">▼</span>';
+}
+
+function getStats() {
+    if (_maestro) {
+        const prof = _data.por_profesor.find(p => p.PROFESOR === _maestro);
+        if (!prof) return null;
+        const d = getD(prof);
+        return { puntual: d.PUNTUAL, tolerancia: d.TOLERANCIA, falta: d.FALTA, total: d.TOTAL };
+    }
+    let puntual=0, tolerancia=0, falta=0, total=0;
+    _data.por_profesor.forEach(p => {
+        const d = getD(p);
+        puntual += d.PUNTUAL; tolerancia += d.TOLERANCIA; falta += d.FALTA; total += d.TOTAL;
+    });
+    return { puntual, tolerancia, falta, total };
+}
+
+function getFilteredSorted() {
+    let list = _maestro
+        ? _data.por_profesor.filter(p => p.PROFESOR === _maestro)
+        : _data.por_profesor;
+
+    if (_search) list = list.filter(p => p.PROFESOR.includes(_search));
+
+    if (_sort.col) {
+        list = [...list].sort((a, b) => {
+            const da = getD(a), db = getD(b);
+            if (_sort.col === 'PROFESOR') return _sort.dir * a.PROFESOR.localeCompare(b.PROFESOR);
+            if (_sort.col === 'ASIST') {
+                const va = da.TOTAL ? (da.PUNTUAL+da.TOLERANCIA)/da.TOTAL : 0;
+                const vb = db.TOTAL ? (db.PUNTUAL+db.TOLERANCIA)/db.TOTAL : 0;
+                return _sort.dir * (va - vb);
+            }
+            return _sort.dir * ((da[_sort.col]??0) - (db[_sort.col]??0));
+        });
+    }
+    return list;
+}
+
+// ── Render principal ──
+function render() {
+    if (!_data) return;
+    const s = getStats();
+    renderCards(s);
+    renderChart(s);
+    renderTable();
+}
+
+// ── Tarjetas ──
+function renderCards(s) {
+    const asistPct = pct(s.puntual + s.tolerancia, s.total);
+    document.getElementById('stats-grid').innerHTML = `
+        <div class="stat-card">
+            <h4>Total Clases</h4>
+            <div class="stat-val">${s.total.toLocaleString()}</div>
+            <div class="stat-sub">${_periodo === 'general' ? 'Mes completo' : _periodo === 'quincena_1' ? 'Quincena 1' : 'Quincena 2'}</div>
+        </div>
+        <div class="stat-card puntual">
+            <h4>Puntual</h4>
+            <div class="stat-val">${pct(s.puntual, s.total)}</div>
+            <div class="stat-sub">${s.puntual.toLocaleString()} clases</div>
+        </div>
+        <div class="stat-card tolerancia">
+            <h4>Tolerancia</h4>
+            <div class="stat-val">${pct(s.tolerancia, s.total)}</div>
+            <div class="stat-sub">${s.tolerancia.toLocaleString()} clases</div>
+        </div>
+        <div class="stat-card falta">
+            <h4>Falta</h4>
+            <div class="stat-val">${pct(s.falta, s.total)}</div>
+            <div class="stat-sub">${s.falta.toLocaleString()} clases</div>
+        </div>`;
+}
+
+// ── Dona ──
+function renderChart(s) {
+    const label = (_maestro || 'Todos') + ' · ' +
+        (_periodo === 'general' ? 'General' : _periodo === 'quincena_1' ? 'Quincena 1' : 'Quincena 2');
+    document.getElementById('chart-title').textContent =
+        _maestro ? _maestro.split(' ').slice(0,3).join(' ') : 'Todos los maestros';
+    document.getElementById('chart-subtitle').textContent =
+        _periodo === 'general' ? 'Mes completo' : _periodo === 'quincena_1' ? 'Quincena 1 (días 1–15)' : 'Quincena 2 (días 16–fin)';
+
+    const ctx = document.getElementById('pie-chart').getContext('2d');
+    if (_pieChart) _pieChart.destroy();
+    _pieChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Puntual','Tolerancia','Falta'],
+            datasets: [{
+                data: [s.puntual, s.tolerancia, s.falta],
+                backgroundColor: ['#28a745','#C5A300','#dc3545'],
+                borderWidth: 2,
+                borderColor: '#fff'
+            }]
+        },
+        options: {
+            cutout: '62%',
+            plugins: {
+                legend: { display: false },
+                tooltip: { callbacks: { label: c => {
+                    const v = c.parsed, tot = c.dataset.data.reduce((a,b)=>a+b,0);
+                    return ` ${v.toLocaleString()} (${tot?((v/tot)*100).toFixed(1):0}%)`;
+                }}}
+            }
+        }
+    });
+
+    const tot = s.total || 1;
+    document.getElementById('pie-legend').innerHTML = `
+        <div class="legend-item">
+            <div class="legend-left"><div class="legend-dot" style="background:#28a745"></div>Puntual</div>
+            <span class="legend-val">${pct(s.puntual,tot)} &nbsp; <small style="color:#999">${s.puntual.toLocaleString()}</small></span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-left"><div class="legend-dot" style="background:#C5A300"></div>Tolerancia</div>
+            <span class="legend-val">${pct(s.tolerancia,tot)} &nbsp; <small style="color:#999">${s.tolerancia.toLocaleString()}</small></span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-left"><div class="legend-dot" style="background:#dc3545"></div>Falta</div>
+            <span class="legend-val">${pct(s.falta,tot)} &nbsp; <small style="color:#999">${s.falta.toLocaleString()}</small></span>
+        </div>`;
+}
+
+// ── Tabla ──
+function renderTable() {
+    if (!_data) return;
+    const container = document.getElementById('table-container');
+
+    // Vista de maestro individual: muestra los 3 periodos
+    if (_maestro) {
+        const prof = _data.por_profesor.find(p => p.PROFESOR === _maestro);
+        if (!prof) return;
+        document.getElementById('table-title').textContent = prof.PROFESOR.split(' ').slice(0,4).join(' ');
+        const rows = [
+            { label:'Mes completo',  d: prof.general },
+            { label:'Quincena 1',    d: prof.quincena_1 },
+            { label:'Quincena 2',    d: prof.quincena_2 },
+        ].map(({ label, d }) => {
+            const asist = d.TOTAL ? (((d.PUNTUAL+d.TOLERANCIA)/d.TOTAL)*100).toFixed(1)+'%' : '—';
+            const sem   = semaforo(d.PUNTUAL, d.TOLERANCIA, d.TOTAL);
+            return `<tr>
+                <td>${sem}<strong>${label}</strong></td>
+                <td><span class="badge badge-p">${d.PUNTUAL}</span></td>
+                <td><span class="badge badge-t">${d.TOLERANCIA}</span></td>
+                <td><span class="badge badge-f">${d.FALTA}</span></td>
+                <td><strong>${d.TOTAL}</strong></td>
+                <td class="pct-cell">${asist}</td>
+            </tr>`;
+        }).join('');
+        container.innerHTML = `
+            <table>
+                <thead><tr>
+                    <th>Periodo</th>
+                    <th>Puntual</th>
+                    <th>Tolerancia</th>
+                    <th>Falta</th>
+                    <th>Total</th>
+                    <th>Asistencia</th>
+                </tr></thead>
+                <tbody>${rows}</tbody>
+            </table>`;
+        return;
+    }
+
+    // Vista general
+    const list = getFilteredSorted();
+    document.getElementById('table-title').textContent = `Maestros (${list.length} mostrados)`;
+
+    if (list.length === 0) {
+        container.innerHTML = '<p class="no-results">No se encontraron maestros con ese nombre.</p>';
+        return;
+    }
+
+    const rows = list.map(p => {
+        const d   = getD(p);
+        const a   = d.TOTAL ? (((d.PUNTUAL+d.TOLERANCIA)/d.TOTAL)*100).toFixed(1) : '0';
+        const sem = semaforo(d.PUNTUAL, d.TOLERANCIA, d.TOTAL);
+        return `<tr>
+            <td class="cell-name">${sem}${p.PROFESOR}</td>
+            <td><span class="badge badge-p">${d.PUNTUAL}</span></td>
+            <td><span class="badge badge-t">${d.TOLERANCIA}</span></td>
+            <td><span class="badge badge-f">${d.FALTA}</span></td>
+            <td>${d.TOTAL}</td>
+            <td class="pct-cell">${a}%</td>
+        </tr>`;
+    }).join('');
+
+    container.innerHTML = `
+        <table>
+            <thead><tr>
+                <th class="sortable" onclick="toggleSort('PROFESOR')">Maestro ${sortIcon('PROFESOR')}</th>
+                <th class="sortable" onclick="toggleSort('PUNTUAL')">Puntual ${sortIcon('PUNTUAL')}</th>
+                <th class="sortable" onclick="toggleSort('TOLERANCIA')">Tolerancia ${sortIcon('TOLERANCIA')}</th>
+                <th class="sortable" onclick="toggleSort('FALTA')">Falta ${sortIcon('FALTA')}</th>
+                <th class="sortable" onclick="toggleSort('TOTAL')">Total ${sortIcon('TOTAL')}</th>
+                <th class="sortable" onclick="toggleSort('ASIST')">Asistencia % ${sortIcon('ASIST')}</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+        </table>`;
+}
+
+// ── Gráfica comparativa horizontal ──
+function renderComparativeChart() {
+    if (!_data) return;
+    const ctx = document.getElementById('bar-chart').getContext('2d');
+    if (_barChart) _barChart.destroy();
+
+    let sorted = [..._data.por_profesor]
+        .filter(p => getD(p).TOTAL > 0)
+        .sort((a,b) => {
+            const da = getD(a), db = getD(b);
+            return (db.FALTA/db.TOTAL) - (da.FALTA/da.TOTAL);
+        });
+
+    if (_barLimit > 0) sorted = sorted.slice(0, _barLimit);
+
+    document.getElementById('bar-container').style.height =
+        Math.max(420, sorted.length * 30) + 'px';
+
+    const labels = sorted.map(p => {
+        const parts = p.PROFESOR.split(/[\s-]+/);
+        return parts.slice(0,2).join(' ');
+    });
+
+    _barChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels,
+            datasets: [
+                { label:'Puntual',    data: sorted.map(p=>getD(p).PUNTUAL),    backgroundColor:'#28a745' },
+                { label:'Tolerancia', data: sorted.map(p=>getD(p).TOLERANCIA), backgroundColor:'#C5A300' },
+                { label:'Falta',      data: sorted.map(p=>getD(p).FALTA),      backgroundColor:'#dc3545' },
+            ]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'top' },
+                tooltip: { mode: 'index', intersect: false }
+            },
+            scales: { x: { stacked: true }, y: { stacked: true } }
+        }
+    });
+}
+
+// ── Tendencia semanal ──
+function renderWeekChart() {
+    if (!_data || !_data.por_dia_semana || _data.por_dia_semana.length === 0) return;
+    document.getElementById('week-section').style.display = 'block';
+
+    const ctx = document.getElementById('week-chart').getContext('2d');
+    if (_weekChart) _weekChart.destroy();
+    const dias = _data.por_dia_semana;
+
+    _weekChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: dias.map(d => d.dia),
+            datasets: [
+                { label:'Puntual',    data: dias.map(d=>d.PUNTUAL),    backgroundColor:'#28a745' },
+                { label:'Tolerancia', data: dias.map(d=>d.TOLERANCIA), backgroundColor:'#C5A300' },
+                { label:'Falta',      data: dias.map(d=>d.FALTA),      backgroundColor:'#dc3545' },
+            ]
+        },
+        options: {
+            responsive: true,
+            plugins: { legend: { position: 'top' }, tooltip: { mode: 'index', intersect: false } },
+            scales: { x: { stacked: true }, y: { stacked: true } }
+        }
+    });
+}
+
+// ── Top maestros puntuales ──
+function setTopPuntualLimit(n, btn) {
+    _topPuntualLimit = n;
+    document.querySelectorAll('.puntual-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    renderTopPuntualChart();
+}
+
+function renderTopPuntualChart() {
+    if (!_data) return;
+    const ctx = document.getElementById('top-puntual-chart').getContext('2d');
+    if (_topPuntualChart) _topPuntualChart.destroy();
+
+    let sorted = [..._data.por_profesor]
+        .filter(p => getD(p).TOTAL > 0)
+        .sort((a, b) => {
+            const da = getD(a), db = getD(b);
+            const pctA = (da.PUNTUAL + da.TOLERANCIA) / da.TOTAL;
+            const pctB = (db.PUNTUAL + db.TOLERANCIA) / db.TOTAL;
+            return pctB - pctA;
+        });
+
+    if (_topPuntualLimit > 0) sorted = sorted.slice(0, _topPuntualLimit);
+
+    document.getElementById('puntual-container').style.height =
+        Math.max(420, sorted.length * 30) + 'px';
+
+    const labels = sorted.map(p => {
+        const parts = p.PROFESOR.split(/[\s-]+/);
+        return parts.slice(0, 2).join(' ');
+    });
+
+    _topPuntualChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels,
+            datasets: [
+                { label: 'Puntual',    data: sorted.map(p => getD(p).PUNTUAL),    backgroundColor: '#28a745' },
+                { label: 'Tolerancia', data: sorted.map(p => getD(p).TOLERANCIA), backgroundColor: '#C5A300' },
+                { label: 'Falta',      data: sorted.map(p => getD(p).FALTA),      backgroundColor: '#dc3545' },
+            ]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'top' },
+                tooltip: { mode: 'index', intersect: false }
+            },
+            scales: { x: { stacked: true }, y: { stacked: true } }
+        }
+    });
+}
+
+// ── Exportar PDF ──
+async function exportarPDF() {
+    if (!_data) return;
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+
+    const W  = 210, M = 13;
+    const C  = { blue:[0,51,102], gold:[197,163,0], white:[255,255,255],
+                 green:[40,167,69], red:[220,53,69], gray:[245,246,250],
+                 textDark:[40,40,60], textLight:[130,130,150] };
+
+    const periodoLabel = _periodo === 'general'    ? 'Mes completo'
+                       : _periodo === 'quincena_1' ? 'Quincena 1 (días 1–15)'
+                       : 'Quincena 2 (días 16–fin de mes)';
+
+    let mesLabel = '';
+    if (_data.resumen_general.fecha_inicio) {
+        const d = new Date(_data.resumen_general.fecha_inicio + 'T12:00:00');
+        mesLabel = `${MESES_NOMBRES[d.getMonth()]} ${d.getFullYear()}`;
+    }
+
+    const hoy      = new Date();
+    const fechaStr = hoy.toLocaleDateString('es-MX', { day:'2-digit', month:'long', year:'numeric' });
+
+    // ── Cargar logo ──
+    const logoImg = await new Promise(resolve => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => resolve(img);
+        img.onerror = () => resolve(null);
+        img.src = 'assets/img/escudo_buap_negativo.png';
+    });
+
+    // ══════════════════════════════════════════════
+    // PÁGINA 1
+    // ══════════════════════════════════════════════
+
+    // ── Header azul ──
+    doc.setFillColor(...C.blue);
+    doc.rect(0, 0, W, 46, 'F');
+
+    if (logoImg) doc.addImage(logoImg, 'PNG', M, 7, 30, 30);
+
+    const tx = M + 36;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(...C.white);
+    doc.setCharSpace(0.4);
+    doc.text('BENEMÉRITA UNIVERSIDAD AUTÓNOMA DE PUEBLA', tx, 14);
+    doc.setCharSpace(0);
+    doc.setFontSize(8);
+    doc.text('Facultad de Administración', tx, 21);
+
+    doc.setFontSize(16);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...C.gold);
+    doc.text('Reporte de Asistencia Docente', tx, 31);
+
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(200, 210, 230);
+    doc.text('Sistema de Control de Asistencia', tx, 38);
+
+    // Línea dorada separadora
+    doc.setFillColor(...C.gold);
+    doc.rect(0, 46, W, 1, 'F');
+
+    // ── Barra de info ──
+    doc.setFillColor(...C.gray);
+    doc.rect(0, 47, W, _maestro ? 19 : 13, 'F');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(...C.blue);
+
+    doc.text('Periodo:', M, 54);
+    doc.setFont('helvetica', 'normal');
+    doc.text(periodoLabel, M + 18, 54);
+
+    if (mesLabel) {
+        doc.setFont('helvetica', 'bold');
+        doc.text('Mes:', W/2 - 10, 54);
+        doc.setFont('helvetica', 'normal');
+        doc.text(mesLabel, W/2 - 2, 54);
+    }
+
+    doc.setFont('helvetica', 'bold');
+    doc.text('Generado:', W - M - 42, 54);
+    doc.setFont('helvetica', 'normal');
+    doc.text(fechaStr, W - M - 24, 54);
+
+    if (_maestro) {
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(...C.blue);
+        doc.text('Maestro:', M, 61);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(...C.textDark);
+        doc.text(_maestro, M + 20, 61);
+    }
+
+    let y = _maestro ? 72 : 66;
+
+    // ── Tarjetas de resumen ──
+    const s       = getStats();
+    const cardW   = (W - 2*M - 9) / 4;
+    const cards   = [
+        { label:'Total Clases',  val: s.total.toLocaleString(),       sub:'',                                   color: C.blue  },
+        { label:'Puntual',       val: pct(s.puntual,s.total),         sub:`${s.puntual.toLocaleString()} clases`,    color: C.green },
+        { label:'Tolerancia',    val: pct(s.tolerancia,s.total),      sub:`${s.tolerancia.toLocaleString()} clases`, color: C.gold  },
+        { label:'Falta',         val: pct(s.falta,s.total),           sub:`${s.falta.toLocaleString()} clases`,      color: C.red   },
+    ];
+
+    cards.forEach((c, i) => {
+        const x = M + i * (cardW + 3);
+        doc.setFillColor(252, 252, 255);
+        doc.roundedRect(x, y, cardW, 22, 2, 2, 'F');
+        doc.setFillColor(...c.color);
+        doc.rect(x, y, cardW, 2.5, 'F');
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(6.5);
+        doc.setTextColor(...C.textLight);
+        doc.text(c.label.toUpperCase(), x + cardW/2, y + 8, { align:'center' });
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(14);
+        doc.setTextColor(...c.color);
+        doc.text(c.val, x + cardW/2, y + 15.5, { align:'center' });
+
+        if (c.sub) {
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(6);
+            doc.setTextColor(...C.textLight);
+            doc.text(c.sub, x + cardW/2, y + 20, { align:'center' });
+        }
+    });
+
+    y += 28;
+
+    // ── Gráfica de dona + leyenda ──
+    const pieCanvas = document.getElementById('pie-chart');
+    const pieImg    = pieCanvas.toDataURL('image/png');
+    const pieSize   = 62;
+    doc.addImage(pieImg, 'PNG', M, y, pieSize, pieSize);
+
+    const lx = M + pieSize + 10;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.setTextColor(...C.blue);
+    doc.text('Distribución de Asistencia', lx, y + 8);
+
+    const tot = s.total || 1;
+    [
+        { label:'Puntual',    val:s.puntual,    color:C.green },
+        { label:'Tolerancia', val:s.tolerancia, color:C.gold  },
+        { label:'Falta',      val:s.falta,      color:C.red   },
+    ].forEach((item, i) => {
+        const ly = y + 18 + i * 15;
+        doc.setFillColor(...item.color);
+        doc.circle(lx + 3, ly - 0.5, 2.5, 'F');
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8.5);
+        doc.setTextColor(...C.textDark);
+        doc.text(item.label, lx + 9, ly);
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(13);
+        doc.setTextColor(...item.color);
+        doc.text(pct(item.val, tot), lx + 9, ly + 7);
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7);
+        doc.setTextColor(...C.textLight);
+        doc.text(`${item.val.toLocaleString()} clases`, lx + 9, ly + 12);
+    });
+
+    y += pieSize + 8;
+
+    // ── Sección: tabla de maestros ──
+    const secH = 8;
+    doc.setFillColor(...C.blue);
+    doc.rect(M, y, W - 2*M, secH, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.setTextColor(...C.white);
+    doc.text('DETALLE POR MAESTRO', M + 5, y + 5.5);
+    y += secH + 1;
+
+    // Construir datos de tabla
+    let tableHead, tableBody;
+    if (_maestro) {
+        const prof = _data.por_profesor.find(p => p.PROFESOR === _maestro);
+        tableHead = [['Periodo','Puntual','Tolerancia','Falta','Total','Asistencia']];
+        tableBody = [
+            { key:'general',    label:'Mes completo' },
+            { key:'quincena_1', label:'Quincena 1' },
+            { key:'quincena_2', label:'Quincena 2' },
+        ].map(({ key, label }) => {
+            const d = prof[key];
+            const a = d.TOTAL ? ((d.PUNTUAL+d.TOLERANCIA)/d.TOTAL*100).toFixed(1)+'%' : '0%';
+            return [label, d.PUNTUAL, d.TOLERANCIA, d.FALTA, d.TOTAL, a];
+        });
+    } else {
+        tableHead = [['Maestro','Puntual','Tolerancia','Falta','Total','Asistencia']];
+        tableBody = getFilteredSorted().map(p => {
+            const d = getD(p);
+            const a = d.TOTAL ? ((d.PUNTUAL+d.TOLERANCIA)/d.TOTAL*100).toFixed(1)+'%' : '0%';
+            return [p.PROFESOR, d.PUNTUAL, d.TOLERANCIA, d.FALTA, d.TOTAL, a];
+        });
+    }
+
+    doc.autoTable({
+        startY: y,
+        head: tableHead,
+        body: tableBody,
+        margin: { left: M, right: M, bottom: 14 },
+        styles: { fontSize: 7.5, cellPadding: 2.8, textColor: C.textDark, font:'helvetica' },
+        headStyles: { fillColor: C.blue, textColor: C.white, fontStyle:'bold', fontSize:8 },
+        alternateRowStyles: { fillColor: [248, 248, 252] },
+        columnStyles: {
+            0: { cellWidth:'auto' },
+            1: { cellWidth:22, halign:'center' },
+            2: { cellWidth:24, halign:'center' },
+            3: { cellWidth:18, halign:'center' },
+            4: { cellWidth:18, halign:'center' },
+            5: { cellWidth:22, halign:'center', fontStyle:'bold' },
+        },
+        didParseCell: data => {
+            if (data.section === 'body' && data.column.index === 5) {
+                const v = parseFloat(data.cell.raw);
+                data.cell.styles.textColor = v >= 80 ? C.green : v >= 60 ? C.gold : C.red;
+                data.cell.styles.fontStyle  = 'bold';
+            }
+        }
+    });
+
+    // ══════════════════════════════════════════════
+    // PÁGINA 2 — Gráfica comparativa
+    // ══════════════════════════════════════════════
+    const barCanvas = document.getElementById('bar-chart');
+    if (barCanvas && barCanvas.width > 0) {
+        doc.addPage();
+
+        doc.setFillColor(...C.blue);
+        doc.rect(0, 0, W, 14, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.setTextColor(...C.white);
+        doc.text('ANÁLISIS COMPARATIVO — MAESTROS POR PORCENTAJE DE FALTA', W/2, 9, { align:'center' });
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7.5);
+        doc.setTextColor(190, 210, 240);
+        doc.text(`Periodo: ${periodoLabel}`, W/2, 13, { align:'center' });
+
+        doc.setFillColor(...C.gold);
+        doc.rect(0, 14, W, 0.8, 'F');
+
+        const barImg    = barCanvas.toDataURL('image/png');
+        const barAspect = barCanvas.height / barCanvas.width;
+        const pdfBarW   = W - 2*M;
+        const pdfBarH   = Math.min(pdfBarW * barAspect, 255);
+
+        doc.addImage(barImg, 'PNG', M, 18, pdfBarW, pdfBarH);
+    }
+
+    // ══════════════════════════════════════════════
+    // PÁGINA 3 — Tendencia semanal (si existe)
+    // ══════════════════════════════════════════════
+    const weekCanvas = document.getElementById('week-chart');
+    if (weekCanvas && _data.por_dia_semana && _data.por_dia_semana.length > 0
+        && document.getElementById('week-section').style.display !== 'none') {
+
+        doc.addPage();
+
+        doc.setFillColor(...C.blue);
+        doc.rect(0, 0, W, 14, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.setTextColor(...C.white);
+        doc.text('TENDENCIA DE ASISTENCIA POR DÍA DE SEMANA', W/2, 9, { align:'center' });
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7.5);
+        doc.setTextColor(190, 210, 240);
+        doc.text('Todos los maestros · Mes completo', W/2, 13, { align:'center' });
+
+        doc.setFillColor(...C.gold);
+        doc.rect(0, 14, W, 0.8, 'F');
+
+        const weekImg    = weekCanvas.toDataURL('image/png');
+        const weekAspect = weekCanvas.height / weekCanvas.width;
+        const pdfWeekW   = W - 2*M;
+        const pdfWeekH   = Math.min(pdfWeekW * weekAspect, 120);
+        doc.addImage(weekImg, 'PNG', M, 20, pdfWeekW, pdfWeekH);
+    }
+
+    // ══════════════════════════════════════════════
+    // PÁGINA — Top maestros más puntuales
+    // ══════════════════════════════════════════════
+    const puntualCanvas = document.getElementById('top-puntual-chart');
+    if (puntualCanvas && puntualCanvas.width > 0) {
+        doc.addPage();
+
+        doc.setFillColor(...C.blue);
+        doc.rect(0, 0, W, 14, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+        doc.setTextColor(...C.white);
+        doc.text('TOP MAESTROS CON MAYOR PORCENTAJE DE ASISTENCIA', W/2, 9, { align:'center' });
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7.5);
+        doc.setTextColor(190, 210, 240);
+        doc.text(`Periodo: ${periodoLabel}`, W/2, 13, { align:'center' });
+
+        doc.setFillColor(...C.gold);
+        doc.rect(0, 14, W, 0.8, 'F');
+
+        const puntualImg    = puntualCanvas.toDataURL('image/png');
+        const puntualAspect = puntualCanvas.height / puntualCanvas.width;
+        const pdfPuntualW   = W - 2*M;
+        const pdfPuntualH   = Math.min(pdfPuntualW * puntualAspect, 255);
+
+        doc.addImage(puntualImg, 'PNG', M, 18, pdfPuntualW, pdfPuntualH);
+    }
+
+    // ══════════════════════════════════════════════
+    // FOOTER en todas las páginas
+    // ══════════════════════════════════════════════
+    const totalPages = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+        doc.setPage(i);
+        const pH = doc.internal.pageSize.getHeight();
+        doc.setFillColor(...C.blue);
+        doc.rect(0, pH - 11, W, 11, 'F');
+        doc.setFillColor(...C.gold);
+        doc.rect(0, pH - 11, W, 0.8, 'F');
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7);
+        doc.setTextColor(...C.white);
+        doc.text('Facultad de Administración · BUAP · Sistema de Control de Asistencia Docente', M, pH - 5);
+        doc.text(`Página ${i} de ${totalPages}`, W - M, pH - 5, { align:'right' });
+    }
+
+    // Guardar
+    const fecha      = new Date().toISOString().split('T')[0];
+    const slug       = _maestro ? _maestro.split(' ')[0] + '_' : '';
+    const periodoSlug = _periodo === 'general' ? 'General'
+                      : _periodo === 'quincena_1' ? 'Q1' : 'Q2';
+    doc.save(`Reporte_Asistencia_${slug}${periodoSlug}_${mesLabel.replace(' ','_') || fecha}.pdf`);
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+    const sesion = await verificarSesion();
+    await inicializar();
+    
+    // Mostrar botón de días inhabiles si es admin
+    if (sesion && sesion.rol === 'ADMIN') {
+        document.getElementById('dias-btn').style.display = 'inline-block';
+    }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// FUNCIONES PARA GESTIONAR DÍAS INHABILES
+// ═══════════════════════════════════════════════════════════════
+
+async function cargarDiasInhabiles() {
+    try {
+        const res = await fetch('/api/diasinhabiles');
+        if (res.status === 401) {
+            window.location.href = 'login.html';
+            return [];
+        }
+        const dias = await res.json();
+        return dias;
+    } catch(e) {
+        console.error('Error al cargar días inhabiles:', e);
+        return [];
+    }
+}
+
+function abrirModalDiasInhabiles() {
+    document.getElementById('modal-dias-inhabiles').style.display = 'flex';
+    document.getElementById('modal-dias-inhabiles').style.justifyContent = 'center';
+    document.getElementById('modal-dias-inhabiles').style.alignItems = 'center';
+    actualizarListaDiasInhabiles();
+}
+
+function cerrarModalDiasInhabiles() {
+    document.getElementById('modal-dias-inhabiles').style.display = 'none';
+    document.getElementById('fecha-input').value = '';
+    document.getElementById('resultado-mensaje').style.display = 'none';
+}
+
+async function actualizarListaDiasInhabiles() {
+    const dias = await cargarDiasInhabiles();
+    const listDiv = document.getElementById('dias-list');
+    
+    if (dias.length === 0) {
+        listDiv.innerHTML = '<p style="color:#999; text-align:center;">No hay días inhabiles registrados</p>';
+        return;
+    }
+    
+    const hoy = new Date();
+    const diasHtml = dias.map(fecha => {
+        const d = new Date(fecha + 'T12:00:00');
+        const es_futuro = d > hoy;
+        const nombreDia = d.toLocaleDateString('es-ES', { weekday:'long' });
+        const nombreFecha = d.toLocaleDateString('es-ES', { day:'2-digit', month:'long', year:'numeric' });
+        return `
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:8px; border-bottom:1px solid #eee;">
+                <div>
+                    <strong>${nombreFecha}</strong><br>
+                    <small style="color:#999;">${nombreDia.charAt(0).toUpperCase() + nombreDia.slice(1)}</small>
+                    ${es_futuro ? '<span style="margin-left:10px; padding:2px 8px; background:#e3f2fd; color:#1976d2; border-radius:3px; font-size:11px;">Futuro</span>' : '<span style="margin-left:10px; padding:2px 8px; background:#f3e5f5; color:#7b1fa2; border-radius:3px; font-size:11px;">Pasado</span>'}
+                </div>
+                <button onclick="eliminarDiaInhabible('${fecha}')" style="padding:5px 12px; background:#dc3545; color:white; border:none; border-radius:3px; cursor:pointer; font-size:12px;">Eliminar</button>
+            </div>
+        `;
+    }).join('');
+    
+    listDiv.innerHTML = diasHtml;
+}
+
+async function agregarDiaInhabible() {
+    const fechaInput = document.getElementById('fecha-input');
+    const fecha = fechaInput.value;
+    const msgDiv = document.getElementById('resultado-mensaje');
+    
+    if (!fecha) {
+        mostrarMensaje('Por favor selecciona una fecha', 'error', msgDiv);
+        return;
+    }
+    
+    try {
+        const res = await fetch('/api/diasinhabiles', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': _csrfToken
+            },
+            body: JSON.stringify({ fecha })
+        });
+        
+        if (res.status === 401) {
+            window.location.href = 'login.html';
+            return;
+        }
+        
+        const data = await res.json();
+        
+        if (!res.ok) {
+            mostrarMensaje(data.error || 'Error al agregar el día', 'error', msgDiv);
+            return;
+        }
+        
+        mostrarMensaje('Día inhabible agregado correctamente', 'success', msgDiv);
+        fechaInput.value = '';
+        
+        // Recargar la lista después de 1 segundo
+        setTimeout(() => {
+            actualizarListaDiasInhabiles();
+            msgDiv.style.display = 'none';
+        }, 1500);
+    } catch(e) {
+        mostrarMensaje('Error de conexión', 'error', msgDiv);
+        console.error(e);
+    }
+}
+
+async function eliminarDiaInhabible(fecha) {
+    if (!confirm(`¿Eliminar el día inhabible ${fecha}?`)) return;
+    
+    const msgDiv = document.getElementById('resultado-mensaje');
+    
+    try {
+        const res = await fetch(`/api/diasinhabiles/${fecha}`, {
+            method: 'DELETE',
+            headers: {
+                'X-CSRF-Token': _csrfToken
+            }
+        });
+        
+        if (res.status === 401) {
+            window.location.href = 'login.html';
+            return;
+        }
+        
+        const data = await res.json();
+        
+        if (!res.ok) {
+            mostrarMensaje(data.error || 'Error al eliminar', 'error', msgDiv);
+            return;
+        }
+        
+        mostrarMensaje('Día eliminado correctamente', 'success', msgDiv);
+        
+        setTimeout(() => {
+            actualizarListaDiasInhabiles();
+            msgDiv.style.display = 'none';
+        }, 1500);
+    } catch(e) {
+        mostrarMensaje('Error de conexión', 'error', msgDiv);
+        console.error(e);
+    }
+}
+
+function mostrarMensaje(texto, tipo, elemento) {
+    elemento.textContent = texto;
+    elemento.style.display = 'block';
+    elemento.style.backgroundColor = tipo === 'success' ? '#d4edda' : '#f8d7da';
+    elemento.style.color = tipo === 'success' ? '#155724' : '#721c24';
+    elemento.style.borderLeft = `4px solid ${tipo === 'success' ? '#28a745' : '#dc3545'}`;
+}
+</script>
+</body>
+</html>
