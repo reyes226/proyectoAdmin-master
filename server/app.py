@@ -260,6 +260,7 @@ def get_meses():
         archivos = [
             f for f in os.listdir(OUTPUT_DIR)
             if f.startswith('data_') and f.endswith('.json')
+            and not f.startswith('data_maestria_doctorado_')
         ]
         meses = sorted([f[5:-5] for f in archivos], reverse=True)
         return jsonify(meses)
@@ -349,6 +350,8 @@ def upload_maestria():
         if archivo.mimetype and archivo.mimetype not in _XLSX_MIMES:
             return jsonify({'error': f'El tipo del archivo {nombre} no es válido'}), 400
 
+    horario_original_filename = horario.filename
+
     h_path = os.path.join(UPLOAD_DIR, 'horario_maestria.xlsx')
     r_path = os.path.join(UPLOAD_DIR, 'registro_maestria.xlsx')
     horario.save(h_path)
@@ -356,9 +359,13 @@ def upload_maestria():
 
     try:
         importlib.reload(procesamiento_logic)
-        mes = procesamiento_logic.procesar(h_path, r_path, OUTPUT_DIR, tipo_horario='maestria_doctorado')
-        logger.info("Mes procesado (maestría-doctorado): %s por %s", mes, session.get('usuario'))
-        return jsonify({'ok': True, 'mes': mes})
+        clave = procesamiento_logic.procesar(
+            h_path, r_path, OUTPUT_DIR,
+            tipo_horario='maestria_doctorado',
+            horario_original_filename=horario_original_filename,
+        )
+        logger.info("Clave procesada (maestría-doctorado): %s por %s", clave, session.get('usuario'))
+        return jsonify({'ok': True, 'mes': clave})
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
     except Exception:
@@ -386,17 +393,17 @@ def delete_mes(mes):
     return jsonify({'ok': True, 'eliminados': eliminados})
 
 
-@app.route('/api/delete-maestria/<mes>', methods=['DELETE'])
+@app.route('/api/delete-maestria/<path:clave>', methods=['DELETE'])
 @require_admin
-def delete_mes_maestria(mes):
-    """Elimina JSON y Excel de maestría-doctorado de un mes. Formato esperado: 'YYYY_MM'"""
+def delete_mes_maestria(clave):
+    """Elimina JSON y Excel de maestría-doctorado. Formato: 'YYYY_MM' o 'YYYY_MM_sem_gen'"""
     _validate_csrf()
 
-    if not re.match(r'^\d{4}_\d{2}$', mes):
+    if not re.match(r'^\d{4}_\d{2}(_[\w]+)*$', clave):
         return jsonify({'error': 'Formato inválido'}), 400
 
     eliminados = []
-    for nombre in [f'data_maestria_doctorado_{mes}.json', f'reporte_asistencia_{mes}.xlsx']:
+    for nombre in [f'data_maestria_doctorado_{clave}.json', f'reporte_asistencia_{clave}.xlsx']:
         path = os.path.join(OUTPUT_DIR, nombre)
         if os.path.exists(path):
             os.remove(path)

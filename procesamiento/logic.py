@@ -236,6 +236,25 @@ def estandarizar_columnas_horario(horarios):
     return horarios[columnas_finales].rename(columns=columnas)
 
 
+def extraer_semestre_generacion(filename: str):
+    """
+    Extrae semestre y generación del nombre del archivo Excel.
+    Ejemplo: "FORMATO PROGRAMACION ACADÉMICA DGE 6A GEN OTOÑO 2026 2DO SEMESTRE.xlsx"
+    Retorna: (semestre_slug, generacion_slug) → ("2do", "6a")
+    """
+    nombre = os.path.basename(filename)
+    nombre = unicodedata.normalize('NFKD', nombre.upper())
+    nombre = nombre.encode('ASCII', 'ignore').decode('utf-8')
+
+    gen_match = re.search(r'(\w+)\s+GEN\b', nombre)
+    generacion = gen_match.group(1).lower() if gen_match else None
+
+    sem_match = re.search(r'(\d+(?:[A-Z]+)?)\s+SEMESTRE', nombre)
+    semestre = sem_match.group(1).lower() if sem_match else None
+
+    return semestre, generacion
+
+
 def clave_horario(nombre):
     nombre = limpiar_texto(nombre)
     partes = nombre.split()
@@ -402,18 +421,20 @@ def contar_por_profesor_quincena(df, quincena_num):
 # FUNCIÓN PRINCIPAL
 # ==================================================
 
-def procesar(horario_path: str, registro_path: str, output_dir: str, tipo_horario: str = 'oficial') -> str:
+def procesar(horario_path: str, registro_path: str, output_dir: str, tipo_horario: str = 'oficial',
+             horario_original_filename: str = None) -> str:
     """
     Procesa los archivos Excel de horario y registro.
 
     Args:
-        horario_path: ruta al archivo de horarios
+        horario_path: ruta al archivo de horarios guardado
         registro_path: ruta al archivo de asistencia
         output_dir: directorio donde guardar los resultados
-        tipo_horario: tipo de horario ('oficial' o 'maestria_doctorado'). Determina el prefijo del JSON de salida.
+        tipo_horario: 'oficial' o 'maestria_doctorado'
+        horario_original_filename: nombre original del archivo de horario (para extraer semestre/generación)
 
     Returns:
-        mes (str): clave del mes procesado, e.g. "2026_01"
+        clave (str): identificador del resultado, e.g. "2026_01" u "2026_10_2do_6a"
 
     Raises:
         ValueError: si los archivos no tienen el formato esperado.
@@ -421,6 +442,13 @@ def procesar(horario_path: str, registro_path: str, output_dir: str, tipo_horari
     inicio = time.perf_counter()
 
     os.makedirs(output_dir, exist_ok=True)
+
+    # Extraer semestre y generación desde el nombre del archivo de horario
+    semestre_slug, generacion_slug = None, None
+    if tipo_horario == 'maestria_doctorado':
+        nombre_ref = horario_original_filename or horario_path
+        semestre_slug, generacion_slug = extraer_semestre_generacion(nombre_ref)
+        logger.info("Semestre detectado: %s | Generación detectada: %s", semestre_slug, generacion_slug)
 
     logger.info("Leyendo horario:  %s", horario_path)
     logger.info("Leyendo registro: %s", registro_path)
@@ -569,8 +597,15 @@ def procesar(horario_path: str, registro_path: str, output_dir: str, tipo_horari
     logger.info("Tiempo de procesamiento: %.2fs", duracion)
     logger.info("Estatus:\n%s", reporte_final['ESTATUS'].value_counts().to_string())
 
+    # ── Construir clave del resultado (incluye semestre/gen para maestría) ──
+    clave = mes
+    if tipo_horario == 'maestria_doctorado' and (semestre_slug or generacion_slug):
+        sem_part = semestre_slug or 'semX'
+        gen_part = generacion_slug or 'genX'
+        clave = f"{mes}_{sem_part}_{gen_part}"
+
     # ── Exportar Excel ──
-    reporte_path = os.path.join(output_dir, f'reporte_asistencia_{mes}.xlsx')
+    reporte_path = os.path.join(output_dir, f'reporte_asistencia_{clave}.xlsx')
     reporte_final.to_excel(reporte_path, index=False)
 
     # ── Exportar JSON ──
@@ -579,6 +614,16 @@ def procesar(horario_path: str, registro_path: str, output_dir: str, tipo_horari
     por_profesor = contar_por_profesor_con_quincenas(reporte_final)
     quincena_1   = contar_por_profesor_quincena(reporte_final, 1)
     quincena_2   = contar_por_profesor_quincena(reporte_final, 2)
+
+    # Propagar semestre y generación del archivo a cada entrada de profesor
+    if tipo_horario == 'maestria_doctorado' and (semestre_slug or generacion_slug):
+        sem_label = semestre_slug.upper() if semestre_slug else None
+        gen_label = generacion_slug.upper() if generacion_slug else None
+        for p in por_profesor:
+            if p.get('SEMESTRE') is None:
+                p['SEMESTRE'] = sem_label
+            if p.get('GENERACION') is None:
+                p['GENERACION'] = gen_label
 
     total_registros   = int(reporte_final.shape[0])
     total_asistencias = int(reporte_final['ESTATUS'].isin(['PUNTUAL', 'TOLERANCIA']).sum())
@@ -611,6 +656,8 @@ def procesar(horario_path: str, registro_path: str, output_dir: str, tipo_horari
 
     out = {
         'resumen_general': resumen_general,
+        'semestre':        semestre_slug.upper() if semestre_slug else None,
+        'generacion':      generacion_slug.upper() if generacion_slug else None,
         'por_profesor':    por_profesor,
         'quincena_1':      quincena_1,
         'quincena_2':      quincena_2,
@@ -619,9 +666,9 @@ def procesar(horario_path: str, registro_path: str, output_dir: str, tipo_horari
 
     # Determinar prefijo del archivo JSON según tipo de horario
     prefijo = 'data' if tipo_horario == 'oficial' else f'data_{tipo_horario}'
-    data_json_path = os.path.join(output_dir, f'{prefijo}_{mes}.json')
+    data_json_path = os.path.join(output_dir, f'{prefijo}_{clave}.json')
     with open(data_json_path, 'w', encoding='utf-8') as f:
         json.dump(out, f, ensure_ascii=False, indent=2)
 
-    logger.info("%s_%s.json generado en %s (tipo: %s)", prefijo, mes, output_dir, tipo_horario)
-    return mes
+    logger.info("%s_%s.json generado en %s (tipo: %s)", prefijo, clave, output_dir, tipo_horario)
+    return clave

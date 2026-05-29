@@ -17,6 +17,7 @@
         <div class="topbar-titles">
             <span class="inst">Facultad de Administración · BUAP</span>
             <span class="title">Dashboard de Asistencia Docente — Maestría-Doctorado</span>
+            <span class="inst" id="dashboard-subtitle" style="font-size:0.8em; opacity:0.85;"></span>
         </div>
     </div>
     <div class="topbar-right">
@@ -33,7 +34,7 @@
     <!-- Filtros -->
     <div class="filters">
         <div class="filter-group">
-            <label>Mes</label>
+            <label>Mes / Semestre / Generación</label>
             <select id="mes-select" onchange="cambiarMes(this.value)">
                 <option value="">Cargando meses...</option>
             </select>

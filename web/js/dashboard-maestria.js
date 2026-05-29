@@ -6,6 +6,16 @@ let _pieChart = null, _barChart = null, _weekChart = null, _topPuntualChart = nu
 const MESES_NOMBRES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
                        'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 
+function formatearClaveMaestria(clave) {
+    const parts = clave.split('_');
+    const anio = parts[0];
+    const numMes = parts[1];
+    let label = `${MESES_NOMBRES[parseInt(numMes) - 1]} ${anio}`;
+    if (parts.length > 2) label += ` · ${parts[2].toUpperCase()} Sem`;
+    if (parts.length > 3) label += ` · Gen ${parts[3].toUpperCase()}`;
+    return label;
+}
+
 // ── Carga inicial: meses disponibles ──
 async function inicializar() {
     // Leer parámetro ?mes= de la URL
@@ -25,9 +35,7 @@ async function inicializar() {
         }
 
         sel.innerHTML = meses.map(m => {
-            const [anio, num] = m.split('_');
-            const nombre = `${MESES_NOMBRES[parseInt(num) - 1]} ${anio}`;
-            return `<option value="${m}">${nombre}</option>`;
+            return `<option value="${m}">${formatearClaveMaestria(m)}</option>`;
         }).join('');
 
         // Seleccionar mes de URL o el más reciente
@@ -56,6 +64,16 @@ async function cargarDatosMes() {
         const res = await fetch(`/output/data_maestria_doctorado_${_mes}.json`);
         if (res.status === 401) { window.location.href = 'login.html'; return; }
         _data = await res.json();
+
+        // Actualizar subtítulo del topbar con semestre/generación del archivo
+        const subtitleEl = document.getElementById('dashboard-subtitle');
+        if (subtitleEl) {
+            const parts = [];
+            if (_data.semestre) parts.push(`${_data.semestre} Semestre`);
+            if (_data.generacion) parts.push(`Generación ${_data.generacion}`);
+            subtitleEl.textContent = parts.length ? parts.join(' · ') : '';
+        }
+
         populateTeacherDropdown();
         render();
         renderComparativeChart();

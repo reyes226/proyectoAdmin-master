@@ -71,7 +71,7 @@
     <div class="card">
         <div class="card-header">
             <h2>Procesar nuevo mes — Maestría-Doctorado</h2>
-            <p>Sube los archivos Excel para generar las estadísticas de Maestría-Doctorado. Si el mes ya existe, se sobreescribirá.</p>
+            <p>Sube los archivos Excel para generar las estadísticas de Maestría-Doctorado. El semestre y la generación se detectan automáticamente desde el nombre del archivo de horario. Puedes subir múltiples grupos (semestres) para el mismo mes.</p>
         </div>
 
         <div class="upload-grid">
@@ -332,10 +332,8 @@ async function procesarArchivosMaestria() {
             box.className = 'status-box error';
             txt.textContent = 'Error: ' + (data.error || 'Error desconocido');
         } else {
-            const [anio, numMes] = data.mes.split('_');
-            const nombre = `${MESES[parseInt(numMes) - 1]} ${anio}`;
             box.className = 'status-box success';
-            txt.textContent = `Mes de ${nombre} (Maestría-Doctorado) procesado correctamente.`;
+            txt.textContent = `Procesado correctamente: ${formatearClaveMaestria(data.mes)} (Maestría-Doctorado)`;
             resetInputsMaestria();
             cargarMesesMaestria();
         }
@@ -416,31 +414,54 @@ async function eliminarMes(mes, nombre) {
     }
 }
 
+// ── Helper: parsea clave maestría → etiqueta legible ──
+function formatearClaveMaestria(clave) {
+    const parts = clave.split('_');
+    const anio = parts[0];
+    const numMes = parts[1];
+    let label = `${MESES[parseInt(numMes) - 1]} ${anio}`;
+    if (parts.length > 2) {
+        const sem = parts[2].toUpperCase();
+        label += ` · ${sem} Semestre`;
+    }
+    if (parts.length > 3) {
+        const gen = parts[3].toUpperCase();
+        label += ` · Gen ${gen}`;
+    }
+    return label;
+}
+
 // ── Meses maestría-doctorado ──
 async function cargarMesesMaestria() {
     const container = document.getElementById('mes-list-maestria-container');
     try {
         const res   = await fetch('/api/meses-maestria', { credentials: 'same-origin' });
         if (res.status === 401) { window.location.href = 'login.html'; return; }
-        const meses = await res.json();
+        const claves = await res.json();
 
-        if (!meses.length) {
+        if (!claves.length) {
             container.innerHTML = '<p class="empty-state">No hay meses de Maestría-Doctorado procesados aún.</p>';
             return;
         }
 
-        const items = meses.map(mes => {
-            const [anio, numMes] = mes.split('_');
-            const nombre = `${MESES[parseInt(numMes) - 1]} ${anio}`;
+        const items = claves.map(clave => {
+            const parts = clave.split('_');
+            const anio = parts[0];
+            const numMes = parts[1];
+            const nombre = formatearClaveMaestria(clave);
+            const sub = parts.length > 2
+                ? `${anio}-${numMes} · ${parts.slice(2).join(' · ').toUpperCase()}`
+                : `${anio}-${numMes}`;
+            const safeId = clave.replace(/_/g, '-');
             return `
-            <div class="mes-item" id="item-maestria-${mes}">
+            <div class="mes-item" id="item-maestria-${safeId}">
                 <div>
                     <div class="mes-nombre">${nombre}</div>
-                    <div class="mes-sub">${anio}-${numMes}</div>
+                    <div class="mes-sub">${sub}</div>
                 </div>
                 <div class="mes-actions">
-                    <a class="btn-ver" href="dashboard-maestria.html?mes=${mes}">Ver Dashboard</a>
-                    <button class="btn-del" onclick="eliminarMesMaestria('${mes}','${nombre}')">Eliminar</button>
+                    <a class="btn-ver" href="dashboard-maestria.html?mes=${encodeURIComponent(clave)}">Ver Dashboard</a>
+                    <button class="btn-del" onclick="eliminarMesMaestria('${clave}','${nombre}')">Eliminar</button>
                 </div>
             </div>`;
         }).join('');
@@ -451,17 +472,18 @@ async function cargarMesesMaestria() {
     }
 }
 
-async function eliminarMesMaestria(mes, nombre) {
+async function eliminarMesMaestria(clave, nombre) {
     if (!confirm(`¿Eliminar los datos de ${nombre} (Maestría-Doctorado)?\nEsta acción no se puede deshacer.`)) return;
     try {
-        const res = await fetch(`/api/delete-maestria/${mes}`, {
+        const res = await fetch(`/api/delete-maestria/${clave}`, {
             method:  'DELETE',
             credentials: 'same-origin',
             headers: { 'X-CSRF-Token': getCsrfToken() },
         });
         if (res.status === 401) { window.location.href = 'login.html'; return; }
         if ((await res.json()).ok) {
-            document.getElementById(`item-maestria-${mes}`)?.remove();
+            const safeId = clave.replace(/_/g, '-');
+            document.getElementById(`item-maestria-${safeId}`)?.remove();
             const lista = document.querySelectorAll('.mes-list');
             if (lista.length > 1 && !lista[1].children.length)
                 document.getElementById('mes-list-maestria-container').innerHTML =
