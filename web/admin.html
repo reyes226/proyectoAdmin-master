@@ -19,6 +19,7 @@
         <a class="btn-nav" href="holidays-admin.html">Gestionar Días Inhabiles</a>
         <a class="btn-nav" href="dashboard.html">Ver Dashboard Oficial</a>
         <a class="btn-nav" href="dashboard-maestria.html">Ver Dashboard Maestría-Doctorado</a>
+        <a class="btn-nav" href="dashboard-admin.html">Ver Dashboard Administrativos</a>
         <button onclick="logout()">Cerrar sesión</button>
     </div>
 </div>
@@ -109,6 +110,48 @@
         </div>
     </div>
 
+    <!-- ── Procesar personal administrativo ── -->
+    <div class="card">
+        <div class="card-header">
+            <h2>Procesar nuevo mes — Personal Administrativo</h2>
+            <p>Sube los archivos Excel para generar las estadísticas del personal administrativo. Si el mes ya existe, se sobreescribirá.</p>
+        </div>
+
+        <div class="upload-grid">
+            <div class="file-field">
+                <label>Horario administrativo</label>
+                <div class="file-drop" id="drop-horario-admin">
+                    <input type="file" accept=".xlsx" id="file-horario-admin"
+                           onchange="onFileSelect('horario_admin', this)">
+                    <div class="drop-label">Selecciona o arrastra el archivo</div>
+                    <div class="drop-hint">.xlsx · Horario_administrativo</div>
+                    <div class="drop-name" id="name-horario-admin"></div>
+                </div>
+            </div>
+            <div class="file-field">
+                <label>Registro de asistencia</label>
+                <div class="file-drop" id="drop-registro-admin">
+                    <input type="file" accept=".xlsx" id="file-registro-admin"
+                           onchange="onFileSelect('registro_admin', this)">
+                    <div class="drop-label">Selecciona o arrastra el archivo</div>
+                    <div class="drop-hint">.xlsx · REGISTRO ASISTENCIA</div>
+                    <div class="drop-name" id="name-registro-admin"></div>
+                </div>
+            </div>
+        </div>
+
+        <button class="btn-process" id="btn-process-admin" onclick="procesarArchivosAdmin()" disabled>
+            Procesar archivos
+        </button>
+
+        <div class="status-box" id="status-box-admin">
+            <span id="status-text-admin"></span>
+            <div class="progress-wrap" id="progress-wrap-admin" style="display:none">
+                <div class="progress-bar" id="progress-bar-admin"></div>
+            </div>
+        </div>
+    </div>
+
     <!-- ── Meses disponibles ── -->
     <div class="section-divider"><h2>Meses registrados</h2></div>
 
@@ -127,6 +170,15 @@
         </div>
     </div>
 
+    <!-- ── Meses personal administrativo disponibles ── -->
+    <div class="section-divider"><h2>Meses registrados — Personal Administrativo</h2></div>
+
+    <div class="card">
+        <div id="mes-list-admin-container">
+            <p class="empty-state">Cargando...</p>
+        </div>
+    </div>
+
 </div>
 
 <script src="js/auth.js"></script>
@@ -137,6 +189,7 @@ const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
 
 let _files = { horario: null, registro: null };
 let _files_maestria = { horario_maestria: null, registro_maestria: null };
+let _files_admin = { horario_admin: null, registro_admin: null };
 
 function validarArchivoXlsx(file) {
     return file.name.toLowerCase().endsWith('.xlsx');
@@ -154,13 +207,19 @@ function onFileSelect(tipo, input) {
 
     const idKey = tipo.replace(/_/g, '-');
 
-    // Diferenciar entre normal y maestría
+    // Diferenciar entre normal, maestría y admin
     if (tipo.includes('maestria')) {
         _files_maestria[tipo] = file;
         document.getElementById(`drop-${idKey}`).classList.add('selected');
         document.getElementById(`name-${idKey}`).textContent = file.name;
-        document.getElementById('btn-process-maestria').disabled = 
+        document.getElementById('btn-process-maestria').disabled =
             !(_files_maestria.horario_maestria && _files_maestria.registro_maestria);
+    } else if (tipo.includes('admin')) {
+        _files_admin[tipo] = file;
+        document.getElementById(`drop-${idKey}`).classList.add('selected');
+        document.getElementById(`name-${idKey}`).textContent = file.name;
+        document.getElementById('btn-process-admin').disabled =
+            !(_files_admin.horario_admin && _files_admin.registro_admin);
     } else {
         _files[tipo] = file;
         document.getElementById(`drop-${idKey}`).classList.add('selected');
@@ -188,6 +247,24 @@ function onFileSelect(tipo, input) {
 });
 
 ['horario_maestria', 'registro_maestria'].forEach(tipo => {
+    const idKey = tipo.replace(/_/g, '-');
+    const drop = document.getElementById(`drop-${idKey}`);
+    drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('drag-over'); });
+    drop.addEventListener('dragleave', () => drop.classList.remove('drag-over'));
+    drop.addEventListener('drop', e => {
+        e.preventDefault();
+        drop.classList.remove('drag-over');
+        const file = e.dataTransfer.files[0];
+        if (!file || !validarArchivoXlsx(file)) return;
+        const input = document.getElementById(`file-${idKey}`);
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        input.files = dt.files;
+        onFileSelect(tipo, input);
+    });
+});
+
+['horario_admin', 'registro_admin'].forEach(tipo => {
     const idKey = tipo.replace(/_/g, '-');
     const drop = document.getElementById(`drop-${idKey}`);
     drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('drag-over'); });
@@ -414,6 +491,140 @@ async function eliminarMes(mes, nombre) {
     }
 }
 
+// ── Procesar personal administrativo ──
+async function procesarArchivosAdmin() {
+    const btn  = document.getElementById('btn-process-admin');
+    const box  = document.getElementById('status-box-admin');
+    const txt  = document.getElementById('status-text-admin');
+    const wrap = document.getElementById('progress-wrap-admin');
+    const bar  = document.getElementById('progress-bar-admin');
+
+    btn.disabled = true;
+    box.className = 'status-box loading';
+    box.style.display = 'block';
+    txt.textContent = 'Procesando archivos de Personal Administrativo... esto puede tardar unos segundos';
+    wrap.style.display = 'block';
+    bar.style.width = '0%';
+
+    let prog = 0;
+    const ticker = setInterval(() => {
+        prog = Math.min(prog + Math.random() * 7, 85);
+        bar.style.width = prog + '%';
+    }, 300);
+
+    const form = new FormData();
+    form.append('horario_admin',  _files_admin.horario_admin);
+    form.append('registro_admin', _files_admin.registro_admin);
+
+    try {
+        const res = await fetch('/api/upload-admin', {
+            method:  'POST',
+            credentials: 'same-origin',
+            headers: { 'X-CSRF-Token': getCsrfToken() },
+            body:    form,
+        });
+        clearInterval(ticker);
+        bar.style.width = '100%';
+
+        let data;
+        try {
+            data = await res.json();
+        } catch {
+            box.className = 'status-box error';
+            txt.textContent = `Error del servidor (${res.status}). Revisa la consola del servidor.`;
+            btn.disabled = false;
+            setTimeout(() => { wrap.style.display = 'none'; }, 900);
+            return;
+        }
+
+        if (!res.ok || data.error) {
+            box.className = 'status-box error';
+            txt.textContent = 'Error: ' + (data.error || 'Error desconocido');
+        } else {
+            const [anio, numMes] = data.mes.split('_');
+            const nombre = `${MESES[parseInt(numMes) - 1]} ${anio}`;
+            box.className = 'status-box success';
+            txt.textContent = `Mes de ${nombre} (Personal Administrativo) procesado correctamente.`;
+            resetInputsAdmin();
+            cargarMesesAdmin();
+        }
+    } catch (err) {
+        clearInterval(ticker);
+        box.className = 'status-box error';
+        txt.textContent = 'No se pudo conectar al servidor: ' + err.message;
+    }
+
+    btn.disabled = false;
+    setTimeout(() => { wrap.style.display = 'none'; }, 900);
+}
+
+function resetInputsAdmin() {
+    _files_admin = { horario_admin: null, registro_admin: null };
+    ['horario_admin', 'registro_admin'].forEach(t => {
+        const idKey = t.replace(/_/g, '-');
+        document.getElementById(`drop-${idKey}`).classList.remove('selected');
+        document.getElementById(`name-${idKey}`).textContent = '';
+        document.getElementById(`file-${idKey}`).value = '';
+    });
+    document.getElementById('btn-process-admin').disabled = true;
+}
+
+// ── Meses personal administrativo ──
+async function cargarMesesAdmin() {
+    const container = document.getElementById('mes-list-admin-container');
+    try {
+        const res   = await fetch('/api/meses-admin', { credentials: 'same-origin' });
+        if (res.status === 401) { window.location.href = 'login.html'; return; }
+        const meses = await res.json();
+
+        if (!meses.length) {
+            container.innerHTML = '<p class="empty-state">No hay meses de Personal Administrativo procesados aún.</p>';
+            return;
+        }
+
+        const items = meses.map(mes => {
+            const [anio, numMes] = mes.split('_');
+            const nombre = `${MESES[parseInt(numMes) - 1]} ${anio}`;
+            return `
+            <div class="mes-item" id="item-admin-${mes}">
+                <div>
+                    <div class="mes-nombre">${nombre}</div>
+                    <div class="mes-sub">${anio}-${numMes} · Personal Administrativo</div>
+                </div>
+                <div class="mes-actions">
+                    <a class="btn-ver" href="dashboard-admin.html?mes=${mes}">Ver Dashboard</a>
+                    <button class="btn-del" onclick="eliminarMesAdmin('${mes}','${nombre}')">Eliminar</button>
+                </div>
+            </div>`;
+        }).join('');
+
+        container.innerHTML = `<div class="mes-list">${items}</div>`;
+    } catch {
+        container.innerHTML = '<p class="empty-state">Error al cargar los meses.</p>';
+    }
+}
+
+async function eliminarMesAdmin(mes, nombre) {
+    if (!confirm(`¿Eliminar los datos de ${nombre} (Personal Administrativo)?\nEsta acción no se puede deshacer.`)) return;
+    try {
+        const res = await fetch(`/api/delete-admin/${mes}`, {
+            method:  'DELETE',
+            credentials: 'same-origin',
+            headers: { 'X-CSRF-Token': getCsrfToken() },
+        });
+        if (res.status === 401) { window.location.href = 'login.html'; return; }
+        if ((await res.json()).ok) {
+            document.getElementById(`item-admin-${mes}`)?.remove();
+            const lista = document.getElementById('mes-list-admin-container').querySelector('.mes-list');
+            if (lista && !lista.children.length)
+                document.getElementById('mes-list-admin-container').innerHTML =
+                    '<p class="empty-state">No hay meses de Personal Administrativo procesados aún.</p>';
+        }
+    } catch (e) {
+        alert('Error al eliminar: ' + e.message);
+    }
+}
+
 // ── Helper: parsea clave maestría → etiqueta legible ──
 function formatearClaveMaestria(clave) {
     const parts = clave.split('_');
@@ -499,6 +710,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (sesion) {
         cargarMeses();
         cargarMesesMaestria();
+        cargarMesesAdmin();
     }
 });
 </script>

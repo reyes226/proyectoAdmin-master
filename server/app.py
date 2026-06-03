@@ -393,6 +393,80 @@ def delete_mes(mes):
     return jsonify({'ok': True, 'eliminados': eliminados})
 
 
+@app.route('/api/meses-admin')
+@require_login
+def get_meses_admin():
+    """Devuelve los meses de personal administrativo disponibles."""
+    try:
+        archivos = [
+            f for f in os.listdir(OUTPUT_DIR)
+            if f.startswith('data_admin_') and f.endswith('.json')
+        ]
+        meses = sorted([f[11:-5] for f in archivos], reverse=True)
+        return jsonify(meses)
+    except Exception:
+        logger.exception("Error en /api/meses-admin")
+        return jsonify({'error': 'Error al obtener meses'}), 500
+
+
+@app.route('/api/upload-admin', methods=['POST'])
+@require_admin
+def upload_admin():
+    """
+    Recibe los dos Excel para personal administrativo.
+    Form-data: 'horario_admin' (xlsx), 'registro_admin' (xlsx)
+    """
+    _validate_csrf()
+
+    horario  = request.files.get('horario_admin')
+    registro = request.files.get('registro_admin')
+
+    if not horario or not registro:
+        return jsonify({'error': 'Se requieren ambos archivos'}), 400
+
+    for archivo, nombre in [(horario, 'horario_admin'), (registro, 'registro_admin')]:
+        if not archivo.filename.lower().endswith('.xlsx'):
+            return jsonify({'error': f'El archivo {nombre} debe ser .xlsx'}), 400
+        if archivo.mimetype and archivo.mimetype not in _XLSX_MIMES:
+            return jsonify({'error': f'El tipo del archivo {nombre} no es válido'}), 400
+
+    h_path = os.path.join(UPLOAD_DIR, 'horario_admin.xlsx')
+    r_path = os.path.join(UPLOAD_DIR, 'registro_admin.xlsx')
+    horario.save(h_path)
+    registro.save(r_path)
+
+    try:
+        importlib.reload(procesamiento_logic)
+        mes = procesamiento_logic.procesar_admin(h_path, r_path, OUTPUT_DIR)
+        logger.info("Mes procesado (admin): %s por %s", mes, session.get('usuario'))
+        return jsonify({'ok': True, 'mes': mes})
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception:
+        logger.exception("Error al procesar archivos admin")
+        return jsonify({'error': 'Error al procesar los archivos. Verifica el formato de los Excel.'}), 500
+
+
+@app.route('/api/delete-admin/<mes>', methods=['DELETE'])
+@require_admin
+def delete_mes_admin(mes):
+    """Elimina JSON y Excel de personal administrativo. Formato esperado: 'YYYY_MM'"""
+    _validate_csrf()
+
+    if not re.match(r'^\d{4}_\d{2}$', mes):
+        return jsonify({'error': 'Formato inválido'}), 400
+
+    eliminados = []
+    for nombre in [f'data_admin_{mes}.json', f'reporte_asistencia_admin_{mes}.xlsx']:
+        path = os.path.join(OUTPUT_DIR, nombre)
+        if os.path.exists(path):
+            os.remove(path)
+            eliminados.append(nombre)
+            logger.info("Archivo admin eliminado: %s por %s", nombre, session.get('usuario'))
+
+    return jsonify({'ok': True, 'eliminados': eliminados})
+
+
 @app.route('/api/delete-maestria/<path:clave>', methods=['DELETE'])
 @require_admin
 def delete_mes_maestria(clave):

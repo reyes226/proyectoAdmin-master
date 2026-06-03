@@ -2,12 +2,11 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Dashboard de Asistencia</title>
+    <title>Dashboard — Personal Administrativo</title>
     <link rel="stylesheet" href="css/styles.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
-
 </head>
 <body>
 
@@ -16,15 +15,15 @@
         <img src="assets/img/escudo_buap_negativo.png" alt="BUAP" class="topbar-logo">
         <div class="topbar-titles">
             <span class="inst">Facultad de Administración · BUAP</span>
-            <span class="title">Dashboard de Asistencia Docente</span>
+            <span class="title">Dashboard de Asistencia — Personal Administrativo</span>
         </div>
     </div>
     <div class="topbar-right">
         <button class="export-btn" onclick="exportarPDF()">Exportar PDF</button>
         <button id="dias-btn" class="export-btn" onclick="abrirModalDiasInhabiles()" style="display:none;">Gestionar Días Inhabiles</button>
         <span id="admin-link-container"></span>
-        <a class="btn-nav" href="dashboard-maestria.html" style="margin-right:8px;">Maestría-Doctorado →</a>
-        <a class="btn-nav" href="dashboard-admin.html" style="margin-right:15px;">Administrativos →</a>
+        <a class="btn-nav" href="dashboard.html" style="margin-right:8px;">Docentes →</a>
+        <a class="btn-nav" href="dashboard-maestria.html" style="margin-right:15px;">Maestría-Doctorado →</a>
         <button onclick="logout()">Cerrar sesión</button>
     </div>
 </div>
@@ -48,14 +47,14 @@
             </div>
         </div>
         <div class="filter-group">
-            <label>Maestro</label>
+            <label>Administrativo</label>
             <select id="teacher-select" onchange="setMaestro(this.value)">
-                <option value="">— Todos los maestros —</option>
+                <option value="">— Todo el personal —</option>
             </select>
         </div>
         <div class="filter-group">
             <label>Buscar</label>
-            <input class="search-input" type="text" placeholder="Nombre del maestro..." oninput="setSearch(this.value)">
+            <input class="search-input" type="text" placeholder="Nombre del administrativo..." oninput="setSearch(this.value)">
         </div>
     </div>
 
@@ -71,15 +70,15 @@
             <div class="legend" id="pie-legend"></div>
         </div>
         <div class="table-panel">
-            <h3 id="table-title">Detalle por Maestro</h3>
+            <h3 id="table-title">Detalle por Administrativo</h3>
             <div id="table-container"><p class="no-results">Cargando datos...</p></div>
         </div>
     </div>
 
     <!-- Análisis comparativo -->
-    <div class="section-divider"><h2>Análisis Comparativo — Maestros por porcentaje de falta</h2></div>
+    <div class="section-divider"><h2>Análisis Comparativo — Personal por porcentaje de falta</h2></div>
     <div class="chart-full-panel">
-        <h3>Comparativa de Asistencia por Maestro</h3>
+        <h3>Comparativa de Asistencia por Administrativo</h3>
         <p class="panel-subtext">
             Ordenados de mayor a menor porcentaje de faltas &nbsp;·&nbsp; Periodo: <span id="comp-periodo-label">General</span>
         </p>
@@ -97,16 +96,16 @@
     <div id="week-section" style="display:none;">
         <div class="section-divider"><h2>Tendencia por Día de Semana</h2></div>
         <div class="week-panel">
-            <h3>Registros totales por día (todos los maestros)</h3>
+            <h3>Registros totales por día (todo el personal)</h3>
             <p class="panel-subtext">Identifica qué días concentran más faltas</p>
             <canvas id="week-chart" height="110"></canvas>
         </div>
     </div>
 
-    <!-- Top maestros puntuales -->
-    <div class="section-divider"><h2>Maestros con Mayor Porcentaje de Asistencia</h2></div>
+    <!-- Top personal puntual -->
+    <div class="section-divider"><h2>Personal con Mayor Porcentaje de Asistencia</h2></div>
     <div class="chart-full-panel">
-        <h3>Top Maestros Más Puntuales</h3>
+        <h3>Top Personal Más Puntual</h3>
         <p class="panel-subtext">
             Ordenados de mayor a menor porcentaje de asistencia &nbsp;·&nbsp; Periodo: <span id="puntual-periodo-label">General</span>
         </p>
@@ -130,8 +129,8 @@
             <button class="modal-close" onclick="cerrarModalDiasInhabiles()">&times;</button>
         </div>
         <div class="modal-body">
-            <p style="margin-bottom:15px; color:#666;">Los días inhabiles son aquellos en los que no hay actividades laborales y los profesores no asisten.</p>
-            
+            <p style="margin-bottom:15px; color:#666;">Los días inhabiles son aquellos en los que no hay actividades laborales.</p>
+
             <div class="dias-form-section">
                 <h3>Agregar Día Inhabible</h3>
                 <div style="display:flex; gap:10px; margin-bottom:20px;">
@@ -140,7 +139,7 @@
                 </div>
                 <div id="resultado-mensaje" style="display:none; padding:10px; border-radius:4px; margin-bottom:10px;"></div>
             </div>
-            
+
             <div class="dias-list-section">
                 <h3>Días Inhabiles Registrados</h3>
                 <div id="dias-list" style="max-height:300px; overflow-y:auto; border:1px solid #ddd; border-radius:4px; padding:10px;">
@@ -164,11 +163,10 @@ const MESES_NOMBRES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
 
 // ── Carga inicial: meses disponibles ──
 async function inicializar() {
-    // Leer parámetro ?mes= de la URL
     const urlMes = new URLSearchParams(window.location.search).get('mes');
 
     try {
-        const res   = await fetch('/api/meses');
+        const res   = await fetch('/api/meses-admin');
         if (res.status === 401) { window.location.href = 'login.html'; return; }
         const meses = await res.json();
 
@@ -186,7 +184,6 @@ async function inicializar() {
             return `<option value="${m}">${nombre}</option>`;
         }).join('');
 
-        // Seleccionar mes de URL o el más reciente
         _mes = (urlMes && meses.includes(urlMes)) ? urlMes : meses[0];
         sel.value = _mes;
 
@@ -201,7 +198,7 @@ async function cambiarMes(mes) {
     _mes = mes;
     _maestro = '';
     document.getElementById('teacher-select').value = '';
-    document.getElementById('teacher-select').innerHTML = '<option value="">— Todos los maestros —</option>';
+    document.getElementById('teacher-select').innerHTML = '<option value="">— Todo el personal —</option>';
     await cargarDatosMes();
 }
 
@@ -209,7 +206,7 @@ async function cargarDatosMes() {
     if (!_mes) return;
     document.getElementById('table-container').innerHTML = '<p class="no-results">Cargando...</p>';
     try {
-        const res = await fetch(`/output/data_${_mes}.json`);
+        const res = await fetch(`/output/data_admin_${_mes}.json`);
         if (res.status === 401) { window.location.href = 'login.html'; return; }
         _data = await res.json();
         populateTeacherDropdown();
@@ -331,36 +328,34 @@ function render() {
 
 // ── Tarjetas ──
 function renderCards(s) {
-    const asistPct = pct(s.puntual + s.tolerancia, s.total);
+    const periodoLabel = _periodo === 'general' ? 'Mes completo' : _periodo === 'quincena_1' ? 'Quincena 1' : 'Quincena 2';
     document.getElementById('stats-grid').innerHTML = `
         <div class="stat-card">
-            <h4>Total Clases</h4>
+            <h4>Total Registros</h4>
             <div class="stat-val">${s.total.toLocaleString()}</div>
-            <div class="stat-sub">${_periodo === 'general' ? 'Mes completo' : _periodo === 'quincena_1' ? 'Quincena 1' : 'Quincena 2'}</div>
+            <div class="stat-sub">${periodoLabel}</div>
         </div>
         <div class="stat-card puntual">
             <h4>Puntual</h4>
             <div class="stat-val">${pct(s.puntual, s.total)}</div>
-            <div class="stat-sub">${s.puntual.toLocaleString()} clases</div>
+            <div class="stat-sub">${s.puntual.toLocaleString()} días</div>
         </div>
         <div class="stat-card tolerancia">
             <h4>Tolerancia</h4>
             <div class="stat-val">${pct(s.tolerancia, s.total)}</div>
-            <div class="stat-sub">${s.tolerancia.toLocaleString()} clases</div>
+            <div class="stat-sub">${s.tolerancia.toLocaleString()} días</div>
         </div>
         <div class="stat-card falta">
             <h4>Falta</h4>
             <div class="stat-val">${pct(s.falta, s.total)}</div>
-            <div class="stat-sub">${s.falta.toLocaleString()} clases</div>
+            <div class="stat-sub">${s.falta.toLocaleString()} días</div>
         </div>`;
 }
 
 // ── Dona ──
 function renderChart(s) {
-    const label = (_maestro || 'Todos') + ' · ' +
-        (_periodo === 'general' ? 'General' : _periodo === 'quincena_1' ? 'Quincena 1' : 'Quincena 2');
     document.getElementById('chart-title').textContent =
-        _maestro ? _maestro.split(' ').slice(0,3).join(' ') : 'Todos los maestros';
+        _maestro ? _maestro.split(' ').slice(0,3).join(' ') : 'Todo el personal';
     document.getElementById('chart-subtitle').textContent =
         _periodo === 'general' ? 'Mes completo' : _periodo === 'quincena_1' ? 'Quincena 1 (días 1–15)' : 'Quincena 2 (días 16–fin)';
 
@@ -410,7 +405,6 @@ function renderTable() {
     if (!_data) return;
     const container = document.getElementById('table-container');
 
-    // Vista de maestro individual: muestra los 3 periodos
     if (_maestro) {
         const prof = _data.por_profesor.find(p => p.PROFESOR === _maestro);
         if (!prof) return;
@@ -446,12 +440,11 @@ function renderTable() {
         return;
     }
 
-    // Vista general
     const list = getFilteredSorted();
-    document.getElementById('table-title').textContent = `Maestros (${list.length} mostrados)`;
+    document.getElementById('table-title').textContent = `Personal Administrativo (${list.length} mostrados)`;
 
     if (list.length === 0) {
-        container.innerHTML = '<p class="no-results">No se encontraron maestros con ese nombre.</p>';
+        container.innerHTML = '<p class="no-results">No se encontró personal con ese nombre.</p>';
         return;
     }
 
@@ -472,7 +465,7 @@ function renderTable() {
     container.innerHTML = `
         <table>
             <thead><tr>
-                <th class="sortable" onclick="toggleSort('PROFESOR')">Maestro ${sortIcon('PROFESOR')}</th>
+                <th class="sortable" onclick="toggleSort('PROFESOR')">Administrativo ${sortIcon('PROFESOR')}</th>
                 <th class="sortable" onclick="toggleSort('PUNTUAL')">Puntual ${sortIcon('PUNTUAL')}</th>
                 <th class="sortable" onclick="toggleSort('TOLERANCIA')">Tolerancia ${sortIcon('TOLERANCIA')}</th>
                 <th class="sortable" onclick="toggleSort('FALTA')">Falta ${sortIcon('FALTA')}</th>
@@ -556,7 +549,7 @@ function renderWeekChart() {
     });
 }
 
-// ── Top maestros puntuales ──
+// ── Top personal puntual ──
 function setTopPuntualLimit(n, btn) {
     _topPuntualLimit = n;
     document.querySelectorAll('.puntual-btn').forEach(b => b.classList.remove('active'));
@@ -636,7 +629,6 @@ async function exportarPDF() {
     const hoy      = new Date();
     const fechaStr = hoy.toLocaleDateString('es-MX', { day:'2-digit', month:'long', year:'numeric' });
 
-    // ── Cargar logo ──
     const logoImg = await new Promise(resolve => {
         const img = new Image();
         img.crossOrigin = 'anonymous';
@@ -644,10 +636,6 @@ async function exportarPDF() {
         img.onerror = () => resolve(null);
         img.src = 'assets/img/escudo_buap_negativo.png';
     });
-
-    // ══════════════════════════════════════════════
-    // PÁGINA 1
-    // ══════════════════════════════════════════════
 
     // ── Header azul ──
     doc.setFillColor(...C.blue);
@@ -668,14 +656,13 @@ async function exportarPDF() {
     doc.setFontSize(16);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(...C.gold);
-    doc.text('Reporte de Asistencia Docente', tx, 31);
+    doc.text('Reporte de Asistencia — Personal Administrativo', tx, 31);
 
     doc.setFontSize(8);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(200, 210, 230);
     doc.text('Sistema de Control de Asistencia', tx, 38);
 
-    // Línea dorada separadora
     doc.setFillColor(...C.gold);
     doc.rect(0, 46, W, 1, 'F');
 
@@ -706,10 +693,10 @@ async function exportarPDF() {
     if (_maestro) {
         doc.setFont('helvetica', 'bold');
         doc.setTextColor(...C.blue);
-        doc.text('Maestro:', M, 61);
+        doc.text('Administrativo:', M, 61);
         doc.setFont('helvetica', 'normal');
         doc.setTextColor(...C.textDark);
-        doc.text(_maestro, M + 20, 61);
+        doc.text(_maestro, M + 30, 61);
     }
 
     let y = _maestro ? 72 : 66;
@@ -718,10 +705,10 @@ async function exportarPDF() {
     const s       = getStats();
     const cardW   = (W - 2*M - 9) / 4;
     const cards   = [
-        { label:'Total Clases',  val: s.total.toLocaleString(),       sub:'',                                   color: C.blue  },
-        { label:'Puntual',       val: pct(s.puntual,s.total),         sub:`${s.puntual.toLocaleString()} clases`,    color: C.green },
-        { label:'Tolerancia',    val: pct(s.tolerancia,s.total),      sub:`${s.tolerancia.toLocaleString()} clases`, color: C.gold  },
-        { label:'Falta',         val: pct(s.falta,s.total),           sub:`${s.falta.toLocaleString()} clases`,      color: C.red   },
+        { label:'Total Registros', val: s.total.toLocaleString(),       sub:'',                                   color: C.blue  },
+        { label:'Puntual',         val: pct(s.puntual,s.total),         sub:`${s.puntual.toLocaleString()} días`,     color: C.green },
+        { label:'Tolerancia',      val: pct(s.tolerancia,s.total),      sub:`${s.tolerancia.toLocaleString()} días`,  color: C.gold  },
+        { label:'Falta',           val: pct(s.falta,s.total),           sub:`${s.falta.toLocaleString()} días`,       color: C.red   },
     ];
 
     cards.forEach((c, i) => {
@@ -786,22 +773,21 @@ async function exportarPDF() {
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(7);
         doc.setTextColor(...C.textLight);
-        doc.text(`${item.val.toLocaleString()} clases`, lx + 9, ly + 12);
+        doc.text(`${item.val.toLocaleString()} días`, lx + 9, ly + 12);
     });
 
     y += pieSize + 8;
 
-    // ── Sección: tabla de maestros ──
+    // ── Sección: tabla ──
     const secH = 8;
     doc.setFillColor(...C.blue);
     doc.rect(M, y, W - 2*M, secH, 'F');
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8.5);
     doc.setTextColor(...C.white);
-    doc.text('DETALLE POR MAESTRO', M + 5, y + 5.5);
+    doc.text('DETALLE POR PERSONAL ADMINISTRATIVO', M + 5, y + 5.5);
     y += secH + 1;
 
-    // Construir datos de tabla
     let tableHead, tableBody;
     if (_maestro) {
         const prof = _data.por_profesor.find(p => p.PROFESOR === _maestro);
@@ -816,7 +802,7 @@ async function exportarPDF() {
             return [label, d.PUNTUAL, d.TOLERANCIA, d.FALTA, d.TOTAL, a];
         });
     } else {
-        tableHead = [['Maestro','Puntual','Tolerancia','Falta','Total','Asistencia']];
+        tableHead = [['Administrativo','Puntual','Tolerancia','Falta','Total','Asistencia']];
         tableBody = getFilteredSorted().map(p => {
             const d = getD(p);
             const a = d.TOTAL ? ((d.PUNTUAL+d.TOLERANCIA)/d.TOTAL*100).toFixed(1)+'%' : '0%';
@@ -849,24 +835,20 @@ async function exportarPDF() {
         }
     });
 
-    // ══════════════════════════════════════════════
-    // PÁGINA 2 — Gráfica comparativa
-    // ══════════════════════════════════════════════
+    // ── Página 2 — Comparativa ──
     const barCanvas = document.getElementById('bar-chart');
     if (barCanvas && barCanvas.width > 0) {
         doc.addPage();
-
         doc.setFillColor(...C.blue);
         doc.rect(0, 0, W, 14, 'F');
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(10);
         doc.setTextColor(...C.white);
-        doc.text('ANÁLISIS COMPARATIVO — MAESTROS POR PORCENTAJE DE FALTA', W/2, 9, { align:'center' });
+        doc.text('ANÁLISIS COMPARATIVO — PERSONAL POR PORCENTAJE DE FALTA', W/2, 9, { align:'center' });
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(7.5);
         doc.setTextColor(190, 210, 240);
         doc.text(`Periodo: ${periodoLabel}`, W/2, 13, { align:'center' });
-
         doc.setFillColor(...C.gold);
         doc.rect(0, 14, W, 0.8, 'F');
 
@@ -874,19 +856,14 @@ async function exportarPDF() {
         const barAspect = barCanvas.height / barCanvas.width;
         const pdfBarW   = W - 2*M;
         const pdfBarH   = Math.min(pdfBarW * barAspect, 255);
-
         doc.addImage(barImg, 'PNG', M, 18, pdfBarW, pdfBarH);
     }
 
-    // ══════════════════════════════════════════════
-    // PÁGINA 3 — Tendencia semanal (si existe)
-    // ══════════════════════════════════════════════
+    // ── Página 3 — Tendencia semanal ──
     const weekCanvas = document.getElementById('week-chart');
     if (weekCanvas && _data.por_dia_semana && _data.por_dia_semana.length > 0
         && document.getElementById('week-section').style.display !== 'none') {
-
         doc.addPage();
-
         doc.setFillColor(...C.blue);
         doc.rect(0, 0, W, 14, 'F');
         doc.setFont('helvetica', 'bold');
@@ -896,8 +873,7 @@ async function exportarPDF() {
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(7.5);
         doc.setTextColor(190, 210, 240);
-        doc.text('Todos los maestros · Mes completo', W/2, 13, { align:'center' });
-
+        doc.text('Todo el personal · Mes completo', W/2, 13, { align:'center' });
         doc.setFillColor(...C.gold);
         doc.rect(0, 14, W, 0.8, 'F');
 
@@ -908,24 +884,20 @@ async function exportarPDF() {
         doc.addImage(weekImg, 'PNG', M, 20, pdfWeekW, pdfWeekH);
     }
 
-    // ══════════════════════════════════════════════
-    // PÁGINA — Top maestros más puntuales
-    // ══════════════════════════════════════════════
+    // ── Página — Top puntuales ──
     const puntualCanvas = document.getElementById('top-puntual-chart');
     if (puntualCanvas && puntualCanvas.width > 0) {
         doc.addPage();
-
         doc.setFillColor(...C.blue);
         doc.rect(0, 0, W, 14, 'F');
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(10);
         doc.setTextColor(...C.white);
-        doc.text('TOP MAESTROS CON MAYOR PORCENTAJE DE ASISTENCIA', W/2, 9, { align:'center' });
+        doc.text('TOP PERSONAL CON MAYOR PORCENTAJE DE ASISTENCIA', W/2, 9, { align:'center' });
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(7.5);
         doc.setTextColor(190, 210, 240);
         doc.text(`Periodo: ${periodoLabel}`, W/2, 13, { align:'center' });
-
         doc.setFillColor(...C.gold);
         doc.rect(0, 14, W, 0.8, 'F');
 
@@ -933,13 +905,10 @@ async function exportarPDF() {
         const puntualAspect = puntualCanvas.height / puntualCanvas.width;
         const pdfPuntualW   = W - 2*M;
         const pdfPuntualH   = Math.min(pdfPuntualW * puntualAspect, 255);
-
         doc.addImage(puntualImg, 'PNG', M, 18, pdfPuntualW, pdfPuntualH);
     }
 
-    // ══════════════════════════════════════════════
-    // FOOTER en todas las páginas
-    // ══════════════════════════════════════════════
+    // ── Footer en todas las páginas ──
     const totalPages = doc.internal.getNumberOfPages();
     for (let i = 1; i <= totalPages; i++) {
         doc.setPage(i);
@@ -951,51 +920,39 @@ async function exportarPDF() {
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(7);
         doc.setTextColor(...C.white);
-        doc.text('Facultad de Administración · BUAP · Sistema de Control de Asistencia Docente', M, pH - 5);
+        doc.text('Facultad de Administración · BUAP · Sistema de Control de Asistencia — Personal Administrativo', M, pH - 5);
         doc.text(`Página ${i} de ${totalPages}`, W - M, pH - 5, { align:'right' });
     }
 
-    // Guardar
     const fecha      = new Date().toISOString().split('T')[0];
     const slug       = _maestro ? _maestro.split(' ')[0] + '_' : '';
-    const periodoSlug = _periodo === 'general' ? 'General'
-                      : _periodo === 'quincena_1' ? 'Q1' : 'Q2';
-    doc.save(`Reporte_Asistencia_${slug}${periodoSlug}_${mesLabel.replace(' ','_') || fecha}.pdf`);
+    const periodoSlug = _periodo === 'general' ? 'General' : _periodo === 'quincena_1' ? 'Q1' : 'Q2';
+    doc.save(`Reporte_Admin_${slug}${periodoSlug}_${mesLabel.replace(' ','_') || fecha}.pdf`);
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
     const sesion = await verificarSesion();
     await inicializar();
-    
-    // Mostrar botón de días inhabiles si es admin
+
     if (sesion && sesion.rol === 'ADMIN') {
         document.getElementById('dias-btn').style.display = 'inline-block';
     }
 });
 
-// ═══════════════════════════════════════════════════════════════
-// FUNCIONES PARA GESTIONAR DÍAS INHABILES
-// ═══════════════════════════════════════════════════════════════
-
+// ── Días inhabiles ──
 async function cargarDiasInhabiles() {
     try {
         const res = await fetch('/api/diasinhabiles');
-        if (res.status === 401) {
-            window.location.href = 'login.html';
-            return [];
-        }
-        const dias = await res.json();
-        return dias;
-    } catch(e) {
-        console.error('Error al cargar días inhabiles:', e);
-        return [];
-    }
+        if (res.status === 401) { window.location.href = 'login.html'; return []; }
+        return await res.json();
+    } catch(e) { return []; }
 }
 
 function abrirModalDiasInhabiles() {
-    document.getElementById('modal-dias-inhabiles').style.display = 'flex';
-    document.getElementById('modal-dias-inhabiles').style.justifyContent = 'center';
-    document.getElementById('modal-dias-inhabiles').style.alignItems = 'center';
+    const modal = document.getElementById('modal-dias-inhabiles');
+    modal.style.display = 'flex';
+    modal.style.justifyContent = 'center';
+    modal.style.alignItems = 'center';
     actualizarListaDiasInhabiles();
 }
 
@@ -1008,30 +965,31 @@ function cerrarModalDiasInhabiles() {
 async function actualizarListaDiasInhabiles() {
     const dias = await cargarDiasInhabiles();
     const listDiv = document.getElementById('dias-list');
-    
+
     if (dias.length === 0) {
         listDiv.innerHTML = '<p style="color:#999; text-align:center;">No hay días inhabiles registrados</p>';
         return;
     }
-    
+
     const hoy = new Date();
     const diasHtml = dias.map(fecha => {
         const d = new Date(fecha + 'T12:00:00');
         const es_futuro = d > hoy;
-        const nombreDia = d.toLocaleDateString('es-ES', { weekday:'long' });
+        const nombreDia   = d.toLocaleDateString('es-ES', { weekday:'long' });
         const nombreFecha = d.toLocaleDateString('es-ES', { day:'2-digit', month:'long', year:'numeric' });
         return `
             <div style="display:flex; justify-content:space-between; align-items:center; padding:8px; border-bottom:1px solid #eee;">
                 <div>
                     <strong>${nombreFecha}</strong><br>
                     <small style="color:#999;">${nombreDia.charAt(0).toUpperCase() + nombreDia.slice(1)}</small>
-                    ${es_futuro ? '<span style="margin-left:10px; padding:2px 8px; background:#e3f2fd; color:#1976d2; border-radius:3px; font-size:11px;">Futuro</span>' : '<span style="margin-left:10px; padding:2px 8px; background:#f3e5f5; color:#7b1fa2; border-radius:3px; font-size:11px;">Pasado</span>'}
+                    ${es_futuro
+                        ? '<span style="margin-left:10px; padding:2px 8px; background:#e3f2fd; color:#1976d2; border-radius:3px; font-size:11px;">Futuro</span>'
+                        : '<span style="margin-left:10px; padding:2px 8px; background:#f3e5f5; color:#7b1fa2; border-radius:3px; font-size:11px;">Pasado</span>'}
                 </div>
                 <button onclick="eliminarDiaInhabible('${fecha}')" style="padding:5px 12px; background:#dc3545; color:white; border:none; border-radius:3px; cursor:pointer; font-size:12px;">Eliminar</button>
-            </div>
-        `;
+            </div>`;
     }).join('');
-    
+
     listDiv.innerHTML = diasHtml;
 }
 
@@ -1039,83 +997,38 @@ async function agregarDiaInhabible() {
     const fechaInput = document.getElementById('fecha-input');
     const fecha = fechaInput.value;
     const msgDiv = document.getElementById('resultado-mensaje');
-    
-    if (!fecha) {
-        mostrarMensaje('Por favor selecciona una fecha', 'error', msgDiv);
-        return;
-    }
-    
+
+    if (!fecha) { mostrarMensaje('Por favor selecciona una fecha', 'error', msgDiv); return; }
+
     try {
         const res = await fetch('/api/diasinhabiles', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-Token': _csrfToken
-            },
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': _csrfToken },
             body: JSON.stringify({ fecha })
         });
-        
-        if (res.status === 401) {
-            window.location.href = 'login.html';
-            return;
-        }
-        
+        if (res.status === 401) { window.location.href = 'login.html'; return; }
         const data = await res.json();
-        
-        if (!res.ok) {
-            mostrarMensaje(data.error || 'Error al agregar el día', 'error', msgDiv);
-            return;
-        }
-        
+        if (!res.ok) { mostrarMensaje(data.error || 'Error al agregar el día', 'error', msgDiv); return; }
         mostrarMensaje('Día inhabible agregado correctamente', 'success', msgDiv);
         fechaInput.value = '';
-        
-        // Recargar la lista después de 1 segundo
-        setTimeout(() => {
-            actualizarListaDiasInhabiles();
-            msgDiv.style.display = 'none';
-        }, 1500);
-    } catch(e) {
-        mostrarMensaje('Error de conexión', 'error', msgDiv);
-        console.error(e);
-    }
+        setTimeout(() => { actualizarListaDiasInhabiles(); msgDiv.style.display = 'none'; }, 1500);
+    } catch(e) { mostrarMensaje('Error de conexión', 'error', msgDiv); }
 }
 
 async function eliminarDiaInhabible(fecha) {
     if (!confirm(`¿Eliminar el día inhabible ${fecha}?`)) return;
-    
     const msgDiv = document.getElementById('resultado-mensaje');
-    
     try {
         const res = await fetch(`/api/diasinhabiles/${fecha}`, {
             method: 'DELETE',
-            headers: {
-                'X-CSRF-Token': _csrfToken
-            }
+            headers: { 'X-CSRF-Token': _csrfToken }
         });
-        
-        if (res.status === 401) {
-            window.location.href = 'login.html';
-            return;
-        }
-        
+        if (res.status === 401) { window.location.href = 'login.html'; return; }
         const data = await res.json();
-        
-        if (!res.ok) {
-            mostrarMensaje(data.error || 'Error al eliminar', 'error', msgDiv);
-            return;
-        }
-        
+        if (!res.ok) { mostrarMensaje(data.error || 'Error al eliminar', 'error', msgDiv); return; }
         mostrarMensaje('Día eliminado correctamente', 'success', msgDiv);
-        
-        setTimeout(() => {
-            actualizarListaDiasInhabiles();
-            msgDiv.style.display = 'none';
-        }, 1500);
-    } catch(e) {
-        mostrarMensaje('Error de conexión', 'error', msgDiv);
-        console.error(e);
-    }
+        setTimeout(() => { actualizarListaDiasInhabiles(); msgDiv.style.display = 'none'; }, 1500);
+    } catch(e) { mostrarMensaje('Error de conexión', 'error', msgDiv); }
 }
 
 function mostrarMensaje(texto, tipo, elemento) {

@@ -418,6 +418,408 @@ def contar_por_profesor_quincena(df, quincena_num):
 
 
 # ==================================================
+# PROCESAMIENTO DE PERSONAL ADMINISTRATIVO
+# ==================================================
+
+def _parsear_horario_admin(horario_str):
+    """
+    Parsea cadena de horario administrativo a lista de (dias_num, hora_entrada).
+
+    Formatos soportados:
+      "09:00 - 17:00"                                           → L-V, 09:00
+      "L-J 11:00-19:00 / V 9:00-17:00"                         → L-J 11:00, V 09:00
+      "X-S 13:00-21:00 / D 7:00-15:00"                         → X-S 13:00, D 07:00
+      "Lunes a jueves de 11:00 a 19:00 / viernes de 9:00..."   → L-J 11:00, V 09:00
+      "13:00 – 21:00 miércoles a sábado y 07:00 – 15:00 ..."   → Mi-S 13:00, D 07:00
+    """
+    if pd.isna(horario_str) or str(horario_str).strip() == '':
+        return []
+
+    # Mapas de días: abreviaturas y nombres completos (normalizados sin acentos)
+    MAPA = {
+        'L': 0, 'LU': 0, 'LUNES': 0,
+        'MA': 1, 'A': 1, 'MARTES': 1,
+        'MI': 2, 'X': 2, 'M': 2, 'MIERCOLES': 2,
+        'J': 3, 'JU': 3, 'JUEVES': 3,
+        'V': 4, 'VI': 4, 'VIERNES': 4,
+        'S': 5, 'SA': 5, 'SABADO': 5,
+        'D': 6, 'DO': 6, 'DOMINGO': 6,
+    }
+    DIAS_LV = [0, 1, 2, 3, 4]
+
+    def _norm(s):
+        """Quita acentos y pasa a mayúsculas para comparar."""
+        s = unicodedata.normalize('NFKD', str(s)).encode('ASCII', 'ignore').decode('utf-8')
+        return s.upper().strip()
+
+    def _rango(ini_s, fin_s):
+        ini = MAPA.get(_norm(ini_s))
+        fin = MAPA.get(_norm(fin_s))
+        if ini is None or fin is None:
+            return []
+        return list(range(ini, fin + 1)) if ini <= fin else list(range(ini, 7)) + list(range(0, fin + 1))
+
+    def _dias_de_texto(s_norm):
+        """
+        Extrae lista de días de un bloque normalizado (sin acentos, mayúsculas).
+        Maneja abreviaturas (L-J, V) y nombres completos (LUNES A JUEVES, VIERNES).
+        """
+        # Patrón 1: abreviatura con guión  "L-J", "X-S", "L-V"
+        m = re.match(r'^([A-Z]+)-([A-Z]+)\s+(?=\d)', s_norm)
+        if m:
+            dias = _rango(m.group(1), m.group(2))
+            if dias:
+                return dias, m.end()
+
+        # Patrón 2: abreviatura sola  "V 09:00", "D 07:00"
+        m = re.match(r'^([A-Z]+)\s+(?=\d)', s_norm)
+        if m and m.group(1) in MAPA:
+            return [MAPA[m.group(1)]], m.end()
+
+        # Patrón 3: nombre completo con rango  "LUNES A JUEVES", "MIERCOLES A SABADO"
+        day_pat = '|'.join(['LUNES', 'MARTES', 'MIERCOLES', 'JUEVES', 'VIERNES', 'SABADO', 'DOMINGO'])
+        m = re.search(rf'({day_pat})\s+A\s+({day_pat})', s_norm)
+        if m:
+            return _rango(m.group(1), m.group(2)), None
+
+        # Patrón 4: nombre de día suelto
+        for day in ['DOMINGO', 'SABADO', 'VIERNES', 'JUEVES', 'MIERCOLES', 'MARTES', 'LUNES']:
+            if re.search(rf'\b{day}\b', s_norm):
+                return [MAPA[day]], None
+
+        return DIAS_LV[:], None
+
+    s_raw = str(horario_str).strip()
+
+    # Dividir en bloques: primero por "/", si no por " y " (con o sin acento)
+    if '/' in s_raw:
+        bloques = [b.strip() for b in s_raw.split('/')]
+    elif re.search(r'\s+[Yy]\s+', s_raw):
+        bloques = [b.strip() for b in re.split(r'\s+[Yy]\s+', s_raw)]
+    else:
+        bloques = [s_raw]
+
+    resultado = []
+    for bloque in bloques:
+        if not bloque:
+            continue
+        bloque_norm = _norm(bloque)
+
+        dias, _ = _dias_de_texto(bloque_norm)
+        hora = parse_hora_horario(bloque)  # extrae la primera hora de la cadena original
+
+        if hora is not None:
+            resultado.append((list(dias), hora))
+
+    return resultado
+
+
+def _clave_admin(nombre):
+    """Clave de coincidencia por palabras ordenadas (robusta ante orden diferente de apellidos/nombre)."""
+    return ' '.join(sorted(limpiar_texto(nombre).split()))
+
+
+def procesar_admin(horario_path: str, registro_path: str, output_dir: str) -> str:
+    """
+    Procesa archivos de asistencia para personal administrativo.
+
+    El Excel de horarios acepta columnas:
+      - ID/No./Num  (opcional): número de empleado
+      - NOMBRE/EMPLEADO/PERSONAL/etc.: nombre completo
+      - HORARIO/HORA/TURNO: p. ej. "09:00 - 17:00" o "L-J 11:00-19:00 / V 09:00-17:00"
+        Si no se indican días se asume Lunes-Viernes.
+
+    Returns:
+        clave "YYYY_MM"
+    """
+    inicio = time.perf_counter()
+    os.makedirs(output_dir, exist_ok=True)
+
+    logger.info("(Admin) Leyendo horario:  %s", horario_path)
+    logger.info("(Admin) Leyendo registro: %s", registro_path)
+
+    try:
+        horarios_raw = pd.read_excel(horario_path, header=None)
+    except Exception as e:
+        raise ValueError(f"No se pudo leer el archivo de horarios: {e}") from e
+    try:
+        registro = pd.read_excel(registro_path, header=None)
+    except Exception as e:
+        raise ValueError(f"No se pudo leer el archivo de registro: {e}") from e
+
+    # ── Estandarizar registro ──
+    registro = estandarizar_columnas_registro(registro)
+
+    # ── Detectar columnas del horario administrativo ──
+    horarios_raw = reconstruir_encabezados_desde_primera_fila(horarios_raw, [
+        ['ID', 'NO', 'NUM', 'NUMERO', 'ID_DOCENTE', 'IDDOCENTE',
+         'ID_ADMINISTRATIVO', 'IDADMINISTRATIVO', 'ID DE PERSONA'],
+        ['NOMBRE', 'PERSONAL', 'EMPLEADO', 'ADMINISTRATIVO', 'PROFESOR', 'TRABAJADOR', 'NOMBRE COMPLETO'],
+        ['DIAS', 'DIA', 'DIAS DE CLASE'],
+        ['HORARIO', 'HORA', 'HORARIOS', 'TURNO'],
+    ])
+
+    id_col      = buscar_columna(horarios_raw, ['ID', 'NO', 'NUM', 'NUMERO', 'ID_DOCENTE', 'IDDOCENTE',
+                                                'ID_ADMINISTRATIVO', 'IDADMINISTRATIVO', 'ID DE PERSONA'])
+    nombre_col  = buscar_columna(horarios_raw, ['NOMBRE', 'PERSONAL', 'EMPLEADO', 'ADMINISTRATIVO',
+                                                'PROFESOR', 'TRABAJADOR', 'NOMBRE COMPLETO'])
+    dia_col     = buscar_columna(horarios_raw, ['DIAS', 'DIA', 'DÍA', 'DIAS DE CLASE'])
+    horario_col = buscar_columna(horarios_raw, ['HORARIO', 'HORA', 'HORARIOS', 'TURNO'])
+
+    if nombre_col is None:
+        raise ValueError(
+            "El archivo de horarios no tiene columna de nombre. "
+            f"Columnas detectadas: {list(horarios_raw.columns)}. "
+            "Se requiere una columna llamada 'NOMBRE' o 'EMPLEADO'."
+        )
+    if horario_col is None:
+        raise ValueError(
+            "El archivo de horarios no tiene columna de horario. "
+            f"Columnas detectadas: {list(horarios_raw.columns)}. "
+            "Se requiere una columna llamada 'HORA' o 'HORARIO'."
+        )
+
+    logger.info("(Admin) Columnas detectadas — id:%s nombre:%s dias:%s hora:%s",
+                id_col, nombre_col, dia_col, horario_col)
+
+    horarios_raw = horarios_raw[horarios_raw[nombre_col].notna()]
+    horarios_raw = horarios_raw[horarios_raw[nombre_col].astype(str).str.strip() != '']
+
+    if horarios_raw.empty:
+        raise ValueError("El archivo de horarios no contiene datos válidos.")
+
+    # ── Expandir cada persona/horario a filas de bloque ──
+    filas = []
+    for _, row in horarios_raw.iterrows():
+        nombre_val = limpiar_texto(str(row[nombre_col]))
+        emp_id     = limpiar_id(row[id_col]) if id_col else None
+        dias_v     = str(row[dia_col]).strip() if dia_col and pd.notna(row.get(dia_col)) else ''
+        horario_v  = str(row[horario_col]).strip() if pd.notna(row.get(horario_col)) else ''
+
+        # Caso complejo: el campo HORA contiene múltiples bloques con "/"" o " y "
+        es_complejo = '/' in horario_v or bool(re.search(r'\s+[Yy]\s+', horario_v))
+
+        if dia_col and dias_v and not es_complejo:
+            # Formato estructurado: columna DIAS + entrada simple en HORA
+            dias_num = convertir_dias(dias_v)
+            if not dias_num:
+                dias_num = [0, 1, 2, 3, 4]
+            hora = parse_hora_horario(horario_v)
+            if hora is None:
+                logger.warning("(Admin) Sin hora válida para '%s': '%s'", nombre_val, horario_v)
+                continue
+            filas.append({
+                'ID_DOCENTE':       emp_id,
+                'PROFESOR':         nombre_val,
+                'DIAS_NUM':         dias_num,
+                'HORA_ENTRADA':     hora,
+                'HORA_OFICIAL_MIN': hora_a_minutos(hora),
+                'CLAVE_H':          clave_horario(nombre_val),
+                'CLAVE_ADMIN':      _clave_admin(nombre_val),
+            })
+        else:
+            # Formato libre: parsear el campo HORA completo
+            bloques = _parsear_horario_admin(horario_v)
+            if not bloques:
+                logger.warning("(Admin) Horario no interpretado '%s' para '%s'", horario_v, nombre_val)
+                continue
+            for dias_num, hora_entrada in bloques:
+                filas.append({
+                    'ID_DOCENTE':       emp_id,
+                    'PROFESOR':         nombre_val,
+                    'DIAS_NUM':         dias_num,
+                    'HORA_ENTRADA':     hora_entrada,
+                    'HORA_OFICIAL_MIN': hora_a_minutos(hora_entrada),
+                    'CLAVE_H':          clave_horario(nombre_val),
+                    'CLAVE_ADMIN':      _clave_admin(nombre_val),
+                })
+
+    if not filas:
+        raise ValueError(
+            "No se pudo interpretar ningún horario. "
+            "Verifica que la columna HORARIO tenga formato 'HH:MM - HH:MM'."
+        )
+
+    horarios = pd.DataFrame(filas)
+    logger.info("(Admin) Personal: %d · Bloques: %d",
+                horarios['PROFESOR'].nunique(), len(horarios))
+
+    # ── Limpiar registro ──
+    registro['ID_DOCENTE']        = registro['ID_DOCENTE'].apply(limpiar_id)
+    registro['FECHA']             = pd.to_datetime(registro['FECHA'], errors='coerce')
+    registro['HORA_REGISTRO']     = registro['HORA'].apply(parse_hora_registro)
+    registro['CLAVE_R']           = registro['PROFESOR'].apply(clave_registro)
+    registro['CLAVE_ADMIN']       = registro['PROFESOR'].apply(_clave_admin)
+    registro = registro.dropna(subset=['FECHA'])
+    registro['HORA_REGISTRO_MIN'] = registro['HORA_REGISTRO'].apply(hora_a_minutos)
+
+    if registro.empty:
+        raise ValueError("El archivo de registro no contiene fechas válidas.")
+
+    # ── Mapear IDs por nombre (dos estrategias para cubrir distintos ordenes) ──
+    # 1. Primero intento: clave_horario / clave_registro (primeras-últimas palabras)
+    mapa_ids_h = horarios.drop_duplicates('CLAVE_H').set_index('CLAVE_H')['ID_DOCENTE'].to_dict()
+    registro['ID_DOCENTE'] = registro.apply(
+        lambda r: mapa_ids_h.get(r['CLAVE_R'], r['ID_DOCENTE']), axis=1
+    )
+
+    # 2. Segundo intento: palabras ordenadas (robusto ante apellidos-nombre vs nombre-apellidos)
+    # Construir mapping: clave_admin del horario → ID_DOCENTE del registro
+    reg_id_by_admin = (
+        registro[registro['ID_DOCENTE'].notna()]
+        .drop_duplicates('CLAVE_ADMIN')
+        .set_index('CLAVE_ADMIN')['ID_DOCENTE']
+        .to_dict()
+    )
+    # Propagar ID al horario si no lo tiene
+    def _asignar_id(row):
+        if row['ID_DOCENTE'] is not None:
+            return row['ID_DOCENTE']
+        return reg_id_by_admin.get(row['CLAVE_ADMIN'])
+
+    horarios['ID_DOCENTE'] = horarios.apply(_asignar_id, axis=1)
+
+    # ── Rango de fechas ──
+    fecha_min    = registro['FECHA'].min().date()
+    fecha_max    = registro['FECHA'].max().date()
+    rango_fechas = pd.date_range(start=fecha_min, end=fecha_max)
+    mes          = fecha_min.strftime('%Y_%m')
+    logger.info("(Admin) Rango: %s → %s  |  Mes: %s", fecha_min, fecha_max, mes)
+
+    # ── Cargar días inhabiles ──
+    dias_inhabiles = cargar_dias_inhabiles()
+    logger.info("(Admin) Días inhabiles: %d", len(dias_inhabiles))
+
+    # ── Generar registros esperados ──
+    bloques_exp = []
+    for _, h in horarios.iterrows():
+        dias_set = set(h['DIAS_NUM'])
+        fechas_v = rango_fechas[rango_fechas.day_of_week.isin(dias_set)]
+        fechas_v = pd.DatetimeIndex([f for f in fechas_v if f.strftime('%Y-%m-%d') not in dias_inhabiles])
+        if len(fechas_v) == 0:
+            continue
+        bloques_exp.append(pd.DataFrame({
+            'ID_DOCENTE':       h['ID_DOCENTE'],
+            'PROFESOR':         h['PROFESOR'],
+            'HORA_OFICIAL':     h['HORA_ENTRADA'],
+            'HORA_OFICIAL_MIN': h['HORA_OFICIAL_MIN'],
+            'FECHA':            fechas_v.date,
+        }))
+
+    if not bloques_exp:
+        raise ValueError("No se generaron registros esperados. Verifica días y horarios.")
+
+    expected = pd.concat(bloques_exp, ignore_index=True)
+    logger.info("(Admin) Registros esperados: %d", len(expected))
+
+    # ── Merge vectorizado ──
+    reg = registro[registro['HORA_REGISTRO_MIN'].notna()].copy()
+    reg['FECHA_D'] = reg['FECHA'].dt.date
+
+    merged = expected.merge(
+        reg[['ID_DOCENTE', 'FECHA_D', 'HORA_REGISTRO', 'HORA_REGISTRO_MIN']],
+        left_on=['ID_DOCENTE', 'FECHA'],
+        right_on=['ID_DOCENTE', 'FECHA_D'],
+        how='left'
+    )
+    merged['DIF_MINUTOS'] = merged['HORA_REGISTRO_MIN'] - merged['HORA_OFICIAL_MIN']
+
+    in_window = merged[merged['DIF_MINUTOS'].between(-VENTANA_ANTES, VENTANA_DESPUES)].copy()
+    in_window['ABS_DIF'] = in_window['DIF_MINUTOS'].abs()
+    logger.info("(Admin) Coincidencias en ventana: %d", len(in_window))
+
+    # ── Asignación greedy ──
+    in_window_sorted = in_window.sort_values('ABS_DIF').reset_index(drop=True)
+    used_expected, used_registro, assigned = set(), set(), []
+    for _, row in in_window_sorted.iterrows():
+        e_key = (row['ID_DOCENTE'], row['FECHA'],   row['HORA_OFICIAL_MIN'])
+        r_key = (row['ID_DOCENTE'], row['FECHA_D'], row['HORA_REGISTRO_MIN'])
+        if e_key not in used_expected and r_key not in used_registro:
+            used_expected.add(e_key)
+            used_registro.add(r_key)
+            assigned.append(row)
+
+    KEY = ['ID_DOCENTE', 'FECHA', 'HORA_OFICIAL_MIN']
+    if assigned:
+        best = pd.DataFrame(assigned)
+        best['ESTATUS'] = np.where(best['DIF_MINUTOS'] <= TOLERANCIA_MIN, 'PUNTUAL', 'TOLERANCIA')
+        best['DIF_MINUTOS'] = best['DIF_MINUTOS'].round(2)
+    else:
+        best = pd.DataFrame(columns=KEY + ['HORA_REGISTRO', 'DIF_MINUTOS', 'ESTATUS'])
+
+    # ── Unir con esperadas → faltas ──
+    reporte_final = expected.merge(
+        best[KEY + ['HORA_REGISTRO', 'DIF_MINUTOS', 'ESTATUS']],
+        on=KEY, how='left'
+    )
+    reporte_final['ESTATUS']       = reporte_final['ESTATUS'].fillna('FALTA')
+    reporte_final['DIF_MINUTOS']   = reporte_final['DIF_MINUTOS'].where(reporte_final['ESTATUS'] != 'FALTA', None)
+    reporte_final['HORA_REGISTRO'] = reporte_final['HORA_REGISTRO'].where(reporte_final['ESTATUS'] != 'FALTA', None)
+    reporte_final = reporte_final[
+        ['ID_DOCENTE', 'PROFESOR', 'FECHA', 'HORA_OFICIAL', 'HORA_REGISTRO', 'DIF_MINUTOS', 'ESTATUS']
+    ].sort_values(['PROFESOR', 'FECHA', 'HORA_OFICIAL'])
+
+    duracion = time.perf_counter() - inicio
+    logger.info("(Admin) Tiempo: %.2fs", duracion)
+    logger.info("(Admin) Estatus:\n%s", reporte_final['ESTATUS'].value_counts().to_string())
+
+    # ── Exportar Excel ──
+    reporte_path = os.path.join(output_dir, f'reporte_asistencia_admin_{mes}.xlsx')
+    reporte_final.to_excel(reporte_path, index=False)
+
+    # ── Exportar JSON ──
+    reporte_final['QUINCENA'] = pd.to_datetime(reporte_final['FECHA']).apply(obtener_quincena)
+    por_profesor = contar_por_profesor_con_quincenas(reporte_final)
+    quincena_1   = contar_por_profesor_quincena(reporte_final, 1)
+    quincena_2   = contar_por_profesor_quincena(reporte_final, 2)
+
+    total_reg  = int(reporte_final.shape[0])
+    total_asist = int(reporte_final['ESTATUS'].isin(['PUNTUAL', 'TOLERANCIA']).sum())
+    total_falt  = int((reporte_final['ESTATUS'] == 'FALTA').sum())
+
+    resumen_general = {
+        'total':        total_reg,
+        'asistencia':   round(100 * total_asist / total_reg, 2) if total_reg else 0,
+        'falta':        round(100 * total_falt  / total_reg, 2) if total_reg else 0,
+        'fecha_inicio': str(fecha_min),
+        'fecha_fin':    str(fecha_max),
+    }
+
+    dias_nombres = {0:'Lunes', 1:'Martes', 2:'Miércoles', 3:'Jueves', 4:'Viernes', 5:'Sábado', 6:'Domingo'}
+    reporte_final['DIA_SEMANA_NUM'] = pd.to_datetime(reporte_final['FECHA']).dt.dayofweek
+    por_dia_semana = []
+    for num in sorted(dias_nombres):
+        df_dia = reporte_final[reporte_final['DIA_SEMANA_NUM'] == num]
+        if len(df_dia) == 0:
+            continue
+        gp = df_dia['ESTATUS'].value_counts()
+        por_dia_semana.append({
+            'dia':        dias_nombres[num],
+            'PUNTUAL':    int(gp.get('PUNTUAL', 0)),
+            'TOLERANCIA': int(gp.get('TOLERANCIA', 0)),
+            'FALTA':      int(gp.get('FALTA', 0)),
+            'TOTAL':      int(len(df_dia)),
+        })
+
+    out = {
+        'resumen_general': resumen_general,
+        'semestre':        None,
+        'generacion':      None,
+        'por_profesor':    por_profesor,
+        'quincena_1':      quincena_1,
+        'quincena_2':      quincena_2,
+        'por_dia_semana':  por_dia_semana,
+    }
+
+    data_json_path = os.path.join(output_dir, f'data_admin_{mes}.json')
+    with open(data_json_path, 'w', encoding='utf-8') as f:
+        json.dump(out, f, ensure_ascii=False, indent=2)
+
+    logger.info("data_admin_%s.json generado en %s", mes, output_dir)
+    return mes
+
+
+# ==================================================
 # FUNCIÓN PRINCIPAL
 # ==================================================
 
@@ -605,7 +1007,8 @@ def procesar(horario_path: str, registro_path: str, output_dir: str, tipo_horari
         clave = f"{mes}_{sem_part}_{gen_part}"
 
     # ── Exportar Excel ──
-    reporte_path = os.path.join(output_dir, f'reporte_asistencia_{clave}.xlsx')
+    excel_prefix = f'reporte_asistencia_admin_{clave}' if tipo_horario == 'admin' else f'reporte_asistencia_{clave}'
+    reporte_path = os.path.join(output_dir, f'{excel_prefix}.xlsx')
     reporte_final.to_excel(reporte_path, index=False)
 
     # ── Exportar JSON ──
