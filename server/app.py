@@ -261,6 +261,7 @@ def get_meses():
             f for f in os.listdir(OUTPUT_DIR)
             if f.startswith('data_') and f.endswith('.json')
             and not f.startswith('data_maestria_doctorado_')
+            and not f.startswith('data_admin_')
         ]
         meses = sorted([f[5:-5] for f in archivos], reverse=True)
         return jsonify(meses)

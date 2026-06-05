@@ -19,6 +19,9 @@ VENTANA_ANTES   = 15   # minutos antes de la hora oficial que se considera váli
 VENTANA_DESPUES = 60   # minutos después (captura toda la hora de clase)
 TOLERANCIA_MIN  = 10   # minutos de retraso aceptados para marcar PUNTUAL
 
+VENTANA_ANTES_ADMIN   = 60   # admin: 1 hora antes de la hora de entrada
+VENTANA_DESPUES_ADMIN = 120  # admin: 2 horas después de la hora de entrada
+
 
 # ==================================================
 # FUNCIONES DE CONFIGURACIÓN
@@ -55,7 +58,9 @@ def limpiar_id(v):
     s = ''.join(c for c in s if c.isdigit())
     if len(s) > 6:
         s = s[-6:]
-    return s
+    elif s:
+        s = s.zfill(6)
+    return s if s else None
 
 
 def limpiar_texto(texto):
@@ -298,6 +303,20 @@ def parse_hora_horario(v):
     return None
 
 
+def parse_hora_salida(v):
+    """Extrae la hora de SALIDA (segunda hora) de cadenas como '08:00 - 16:00'."""
+    if pd.isna(v):
+        return None
+    s = str(v).lower().replace('hrs', '').replace('horas', '')
+    matches = re.findall(r'\d{1,2}:\d{2}', s)
+    if len(matches) >= 2:
+        try:
+            return dt.datetime.strptime(matches[-1], "%H:%M").time()
+        except Exception:
+            return None
+    return None
+
+
 def parse_hora_registro(v):
     if pd.isna(v):
         return None
@@ -506,10 +525,11 @@ def _parsear_horario_admin(horario_str):
         bloque_norm = _norm(bloque)
 
         dias, _ = _dias_de_texto(bloque_norm)
-        hora = parse_hora_horario(bloque)  # extrae la primera hora de la cadena original
+        hora_entrada = parse_hora_horario(bloque)
+        hora_salida  = parse_hora_salida(bloque)
 
-        if hora is not None:
-            resultado.append((list(dias), hora))
+        if hora_entrada is not None:
+            resultado.append((list(dias), hora_entrada, hora_salida))
 
     return resultado
 
@@ -604,16 +624,19 @@ def procesar_admin(horario_path: str, registro_path: str, output_dir: str) -> st
             dias_num = convertir_dias(dias_v)
             if not dias_num:
                 dias_num = [0, 1, 2, 3, 4]
-            hora = parse_hora_horario(horario_v)
-            if hora is None:
+            hora_ent = parse_hora_horario(horario_v)
+            hora_sal = parse_hora_salida(horario_v)
+            if hora_ent is None:
                 logger.warning("(Admin) Sin hora válida para '%s': '%s'", nombre_val, horario_v)
                 continue
             filas.append({
                 'ID_DOCENTE':       emp_id,
                 'PROFESOR':         nombre_val,
                 'DIAS_NUM':         dias_num,
-                'HORA_ENTRADA':     hora,
-                'HORA_OFICIAL_MIN': hora_a_minutos(hora),
+                'HORA_ENTRADA':     hora_ent,
+                'HORA_SALIDA':      hora_sal,
+                'HORA_OFICIAL_MIN': hora_a_minutos(hora_ent),
+                'HORA_SALIDA_MIN':  hora_a_minutos(hora_sal),
                 'CLAVE_H':          clave_horario(nombre_val),
                 'CLAVE_ADMIN':      _clave_admin(nombre_val),
             })
@@ -623,13 +646,15 @@ def procesar_admin(horario_path: str, registro_path: str, output_dir: str) -> st
             if not bloques:
                 logger.warning("(Admin) Horario no interpretado '%s' para '%s'", horario_v, nombre_val)
                 continue
-            for dias_num, hora_entrada in bloques:
+            for dias_num, hora_entrada, hora_salida in bloques:
                 filas.append({
                     'ID_DOCENTE':       emp_id,
                     'PROFESOR':         nombre_val,
                     'DIAS_NUM':         dias_num,
                     'HORA_ENTRADA':     hora_entrada,
+                    'HORA_SALIDA':      hora_salida,
                     'HORA_OFICIAL_MIN': hora_a_minutos(hora_entrada),
+                    'HORA_SALIDA_MIN':  hora_a_minutos(hora_salida),
                     'CLAVE_H':          clave_horario(nombre_val),
                     'CLAVE_ADMIN':      _clave_admin(nombre_val),
                 })
@@ -703,6 +728,8 @@ def procesar_admin(horario_path: str, registro_path: str, output_dir: str) -> st
             'PROFESOR':         h['PROFESOR'],
             'HORA_OFICIAL':     h['HORA_ENTRADA'],
             'HORA_OFICIAL_MIN': h['HORA_OFICIAL_MIN'],
+            'HORA_SALIDA':      h['HORA_SALIDA'],
+            'HORA_SALIDA_MIN':  h['HORA_SALIDA_MIN'],
             'FECHA':            fechas_v.date,
         }))
 
@@ -712,49 +739,59 @@ def procesar_admin(horario_path: str, registro_path: str, output_dir: str) -> st
     expected = pd.concat(bloques_exp, ignore_index=True)
     logger.info("(Admin) Registros esperados: %d", len(expected))
 
-    # ── Merge vectorizado ──
-    reg = registro[registro['HORA_REGISTRO_MIN'].notna()].copy()
-    reg['FECHA_D'] = reg['FECHA'].dt.date
+    # ── Primer checkin por persona por día ──
+    reg_all = registro[registro['HORA_REGISTRO_MIN'].notna()].copy()
+    reg_all['FECHA_D'] = reg_all['FECHA'].dt.date
 
-    merged = expected.merge(
-        reg[['ID_DOCENTE', 'FECHA_D', 'HORA_REGISTRO', 'HORA_REGISTRO_MIN']],
-        left_on=['ID_DOCENTE', 'FECHA'],
-        right_on=['ID_DOCENTE', 'FECHA_D'],
-        how='left'
+    reg_primero = (
+        reg_all.sort_values('HORA_REGISTRO_MIN')
+        .groupby(['ID_DOCENTE', 'FECHA_D'], as_index=False)
+        .first()
     )
-    merged['DIF_MINUTOS'] = merged['HORA_REGISTRO_MIN'] - merged['HORA_OFICIAL_MIN']
-
-    in_window = merged[merged['DIF_MINUTOS'].between(-VENTANA_ANTES, VENTANA_DESPUES)].copy()
-    in_window['ABS_DIF'] = in_window['DIF_MINUTOS'].abs()
-    logger.info("(Admin) Coincidencias en ventana: %d", len(in_window))
-
-    # ── Asignación greedy ──
-    in_window_sorted = in_window.sort_values('ABS_DIF').reset_index(drop=True)
-    used_expected, used_registro, assigned = set(), set(), []
-    for _, row in in_window_sorted.iterrows():
-        e_key = (row['ID_DOCENTE'], row['FECHA'],   row['HORA_OFICIAL_MIN'])
-        r_key = (row['ID_DOCENTE'], row['FECHA_D'], row['HORA_REGISTRO_MIN'])
-        if e_key not in used_expected and r_key not in used_registro:
-            used_expected.add(e_key)
-            used_registro.add(r_key)
-            assigned.append(row)
 
     KEY = ['ID_DOCENTE', 'FECHA', 'HORA_OFICIAL_MIN']
-    if assigned:
-        best = pd.DataFrame(assigned)
-        best['ESTATUS'] = np.where(best['DIF_MINUTOS'] <= TOLERANCIA_MIN, 'PUNTUAL', 'TOLERANCIA')
-        best['DIF_MINUTOS'] = best['DIF_MINUTOS'].round(2)
-    else:
-        best = pd.DataFrame(columns=KEY + ['HORA_REGISTRO', 'DIF_MINUTOS', 'ESTATUS'])
 
-    # ── Unir con esperadas → faltas ──
-    reporte_final = expected.merge(
-        best[KEY + ['HORA_REGISTRO', 'DIF_MINUTOS', 'ESTATUS']],
-        on=KEY, how='left'
+    def _merge_y_asignar(exp_df, reg_df, ventana_min, ventana_max, puntual_fn):
+        merged = exp_df.merge(
+            reg_df[['ID_DOCENTE', 'FECHA_D', 'HORA_REGISTRO', 'HORA_REGISTRO_MIN']],
+            left_on=['ID_DOCENTE', 'FECHA'],
+            right_on=['ID_DOCENTE', 'FECHA_D'],
+            how='left'
+        )
+        merged['DIF_MINUTOS'] = merged['HORA_REGISTRO_MIN'] - merged['HORA_OFICIAL_MIN']
+        in_win = merged[merged['DIF_MINUTOS'].between(ventana_min, ventana_max)].copy()
+        in_win['ABS_DIF'] = in_win['DIF_MINUTOS'].abs()
+
+        in_win_s = in_win.sort_values('ABS_DIF').reset_index(drop=True)
+        used_e, used_r, assigned = set(), set(), []
+        for _, row in in_win_s.iterrows():
+            ek = (row['ID_DOCENTE'], row['FECHA'],   row['HORA_OFICIAL_MIN'])
+            rk = (row['ID_DOCENTE'], row['FECHA_D'], row['HORA_REGISTRO_MIN'])
+            if ek not in used_e and rk not in used_r:
+                used_e.add(ek); used_r.add(rk); assigned.append(row)
+
+        if assigned:
+            best = pd.DataFrame(assigned)
+            best['ESTATUS'] = np.where(best['DIF_MINUTOS'].apply(puntual_fn), 'PUNTUAL', 'TOLERANCIA')
+            best['DIF_MINUTOS'] = best['DIF_MINUTOS'].round(2)
+        else:
+            best = pd.DataFrame(columns=KEY + ['HORA_REGISTRO', 'DIF_MINUTOS', 'ESTATUS'])
+
+        rf = exp_df.merge(best[KEY + ['HORA_REGISTRO', 'DIF_MINUTOS', 'ESTATUS']], on=KEY, how='left')
+        rf['ESTATUS']       = rf['ESTATUS'].fillna('FALTA')
+        rf['DIF_MINUTOS']   = rf['DIF_MINUTOS'].where(rf['ESTATUS'] != 'FALTA', None)
+        rf['HORA_REGISTRO'] = rf['HORA_REGISTRO'].where(rf['ESTATUS'] != 'FALTA', None)
+        return rf
+
+    # ── Comparar primer checkin del día con HORA_ENTRADA ──
+    exp_e = expected[['ID_DOCENTE', 'PROFESOR', 'FECHA', 'HORA_OFICIAL', 'HORA_OFICIAL_MIN']].copy()
+    reporte_final = _merge_y_asignar(
+        exp_e, reg_primero,
+        -VENTANA_ANTES_ADMIN, VENTANA_DESPUES_ADMIN,
+        lambda d: d <= TOLERANCIA_MIN,
     )
-    reporte_final['ESTATUS']       = reporte_final['ESTATUS'].fillna('FALTA')
-    reporte_final['DIF_MINUTOS']   = reporte_final['DIF_MINUTOS'].where(reporte_final['ESTATUS'] != 'FALTA', None)
-    reporte_final['HORA_REGISTRO'] = reporte_final['HORA_REGISTRO'].where(reporte_final['ESTATUS'] != 'FALTA', None)
+    logger.info("(Admin) Registros: %d", len(reporte_final))
+
     reporte_final = reporte_final[
         ['ID_DOCENTE', 'PROFESOR', 'FECHA', 'HORA_OFICIAL', 'HORA_REGISTRO', 'DIF_MINUTOS', 'ESTATUS']
     ].sort_values(['PROFESOR', 'FECHA', 'HORA_OFICIAL'])
