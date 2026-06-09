@@ -10,7 +10,11 @@ from functools import wraps
 from collections import defaultdict
 from datetime import datetime, timedelta
 
+<<<<<<< HEAD
 from flask import Flask, request, jsonify, send_from_directory, session, abort, redirect
+=======
+from flask import Flask, request, jsonify, send_from_directory, session, abort
+>>>>>>> 7e2db9b8c0f5ecba8dd3f41d645f4cf70d1cb5b9
 from werkzeug.security import check_password_hash
 
 # ── Logging ──────────────────────────────────────────
@@ -23,9 +27,15 @@ logger = logging.getLogger(__name__)
 # ── Rutas base ───────────────────────────────────────
 BASE_DIR   = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WEB_DIR    = os.path.join(BASE_DIR, 'web')
+<<<<<<< HEAD
 OUTPUT_DIR = os.path.abspath(os.environ.get('OUTPUT_DIR', os.path.join(BASE_DIR, 'output')))
 UPLOAD_DIR = os.path.abspath(os.environ.get('UPLOAD_DIR', os.path.join(BASE_DIR, 'procesamiento', 'uploads')))
 CONFIG_DIR = os.path.abspath(os.environ.get('CONFIG_DIR', os.path.join(BASE_DIR, 'config')))
+=======
+OUTPUT_DIR = os.path.join(BASE_DIR, 'output')
+UPLOAD_DIR = os.path.join(BASE_DIR, 'procesamiento', 'uploads')
+CONFIG_DIR = os.path.join(BASE_DIR, 'config')
+>>>>>>> 7e2db9b8c0f5ecba8dd3f41d645f4cf70d1cb5b9
 USERS_FILE = os.path.join(CONFIG_DIR, 'users.json')
 DIASINHABILES_FILE = os.path.join(CONFIG_DIR, 'dias_inhabiles.json')
 
@@ -142,6 +152,7 @@ def require_admin(f):
     return decorated
 
 
+<<<<<<< HEAD
 def require_admin_page(f):
     @wraps(f)
     def decorated(*args, **kwargs):
@@ -153,6 +164,8 @@ def require_admin_page(f):
     return decorated
 
 
+=======
+>>>>>>> 7e2db9b8c0f5ecba8dd3f41d645f4cf70d1cb5b9
 # ══════════════════════════════════════════════════════
 # CABECERAS DE SEGURIDAD
 # ══════════════════════════════════════════════════════
@@ -181,6 +194,7 @@ def set_security_headers(response):
 def index():
     return send_from_directory(WEB_DIR, 'index.html')
 
+<<<<<<< HEAD
 @app.route('/admin.html')
 @require_admin_page
 def admin_page():
@@ -196,6 +210,8 @@ def holidays_admin_page():
 def dashboard_admin_page():
     return send_from_directory(WEB_DIR, 'dashboard-admin.html')
 
+=======
+>>>>>>> 7e2db9b8c0f5ecba8dd3f41d645f4cf70d1cb5b9
 @app.route('/<path:filename>')
 def static_files(filename):
     filepath = os.path.join(WEB_DIR, filename)
@@ -421,7 +437,11 @@ def delete_mes(mes):
 
 
 @app.route('/api/meses-admin')
+<<<<<<< HEAD
 @require_admin
+=======
+@require_login
+>>>>>>> 7e2db9b8c0f5ecba8dd3f41d645f4cf70d1cb5b9
 def get_meses_admin():
     """Devuelve los meses de personal administrativo disponibles."""
     try:

@@ -48,16 +48,24 @@ def cmd_reset():
     print("⚠️  Esto recrea el archivo con contraseñas por defecto.")
     print("   admin → admin123")
     print("   consulta → consulta123")
+<<<<<<< HEAD
     print("   consulta2 → 12345678")
+=======
+>>>>>>> 7e2db9b8c0f5ecba8dd3f41d645f4cf70d1cb5b9
     confirm = input("¿Continuar? (s/N): ").strip().lower()
     if confirm != 's':
         print("Cancelado.")
         return
 
     users = {
+<<<<<<< HEAD
         "admin":     {"password_hash": hash_password("admin123"),     "rol": "ADMIN"},
         "consulta":  {"password_hash": hash_password("consulta123"),  "rol": "CONSULTA"},
         "consulta2": {"password_hash": hash_password("12345678"),    "rol": "CONSULTA"},
+=======
+        "admin":    {"password_hash": hash_password("admin123"),    "rol": "ADMIN"},
+        "consulta": {"password_hash": hash_password("consulta123"), "rol": "CONSULTA"},
+>>>>>>> 7e2db9b8c0f5ecba8dd3f41d645f4cf70d1cb5b9
     }
     save_users(users)
     print(f"✅ Usuarios creados en: {USERS_FILE}")
