@@ -24,7 +24,6 @@ function ensureServerMode() {
     return true;
 }
 
-<<<<<<< HEAD
 function aplicarPermisosSesion(data) {
     const adminContainer = document.getElementById('admin-link-container');
     if (adminContainer) {
@@ -40,8 +39,6 @@ function aplicarPermisosSesion(data) {
         }
     });
 }
-=======
->>>>>>> 7e2db9b8c0f5ecba8dd3f41d645f4cf70d1cb5b9
 
 // ===============================
 // LOGIN
@@ -116,16 +113,7 @@ async function verificarSesion(rolRequerido = null) {
             return null;
         }
 
-<<<<<<< HEAD
         aplicarPermisosSesion(data);
-=======
-        // Mostrar el enlace de administración si corresponde
-        const adminContainer = document.getElementById('admin-link-container');
-        if (adminContainer && data.rol === 'ADMIN') {
-            adminContainer.innerHTML =
-                '<a class="admin-link" href="admin.html">Panel Admin</a>';
-        }
->>>>>>> 7e2db9b8c0f5ecba8dd3f41d645f4cf70d1cb5b9
 
         return data;
 
