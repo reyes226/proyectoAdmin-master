@@ -142,6 +142,32 @@ def require_admin(f):
     return decorated
 
 
+def _get_user_panels() -> list:
+    panels = session.get('panels', [])
+    return [str(p).lower() for p in panels]
+
+
+def _has_panel(panel_name: str) -> bool:
+    return panel_name.lower() in _get_user_panels()
+
+
+def require_panel(panel_name: str):
+    def decorator(f):
+        @wraps(f)
+        def decorated(*args, **kwargs):
+            if 'usuario' not in session:
+                if request.path.startswith('/api/'):
+                    return jsonify({'error': 'No autorizado'}), 401
+                return redirect('/login.html')
+            if not _has_panel(panel_name):
+                if request.path.startswith('/api/'):
+                    return jsonify({'error': 'Sin permisos'}), 403
+                return redirect('/dashboard.html')
+            return f(*args, **kwargs)
+        return decorated
+    return decorator
+
+
 def require_admin_page(f):
     @wraps(f)
     def decorated(*args, **kwargs):
@@ -192,7 +218,7 @@ def holidays_admin_page():
     return send_from_directory(WEB_DIR, 'holidays-admin.html')
 
 @app.route('/dashboard-admin.html')
-@require_admin_page
+@require_panel('administrativos')
 def dashboard_admin_page():
     return send_from_directory(WEB_DIR, 'dashboard-admin.html')
 
@@ -245,13 +271,18 @@ def api_login():
         logger.warning("Login fallido para '%s' desde %s", usuario, ip)
         return jsonify({'error': 'Usuario o contraseña incorrectos'}), 401
 
+    panels = user_data.get('panels') or []
+    if not panels:
+        panels = ['docentes', 'maestria', 'administrativos'] if user_data.get('rol') == 'ADMIN' else ['docentes', 'maestria', 'administrativos'] if user_data.get('rol') == 'CONSULTA' else ['docentes']
+
     session.clear()
     session['usuario'] = usuario
     session['rol']     = user_data['rol']
+    session['panels']  = [str(p).lower() for p in panels]
     csrf_token         = _get_csrf_token()
 
     logger.info("Login exitoso: %s (%s) desde %s", usuario, user_data['rol'], ip)
-    return jsonify({'ok': True, 'rol': user_data['rol'], 'csrf_token': csrf_token})
+    return jsonify({'ok': True, 'rol': user_data['rol'], 'csrf_token': csrf_token, 'panels': session['panels']})
 
 
 @app.route('/api/logout', methods=['POST'])
@@ -270,6 +301,7 @@ def api_whoami():
         'authenticated': True,
         'usuario':    session['usuario'],
         'rol':        session['rol'],
+        'panels':     _get_user_panels(),
         'csrf_token': _get_csrf_token(),
     })
 
@@ -421,7 +453,7 @@ def delete_mes(mes):
 
 
 @app.route('/api/meses-admin')
-@require_admin
+@require_panel('administrativos')
 def get_meses_admin():
     """Devuelve los meses de personal administrativo disponibles."""
     try:

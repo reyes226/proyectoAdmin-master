@@ -25,6 +25,9 @@ function ensureServerMode() {
 }
 
 function aplicarPermisosSesion(data) {
+    const panels = Array.isArray(data.panels) ? data.panels : [];
+    const tienePanel = (nombre) => panels.includes(nombre);
+
     const adminContainer = document.getElementById('admin-link-container');
     if (adminContainer) {
         adminContainer.innerHTML = data.rol === 'ADMIN'
@@ -32,11 +35,16 @@ function aplicarPermisosSesion(data) {
             : '';
     }
 
-    document.querySelectorAll('a').forEach(link => {
-        const texto = (link.textContent || '').trim();
-        if (/administrativos/i.test(texto)) {
-            link.style.display = data.rol === 'ADMIN' ? '' : 'none';
-        }
+    document.querySelectorAll('a[href="dashboard-maestria.html"]').forEach(link => {
+        link.style.display = data.rol === 'ADMIN' || tienePanel('maestria') ? '' : 'none';
+    });
+
+    document.querySelectorAll('a[href="dashboard-admin.html"]').forEach(link => {
+        link.style.display = data.rol === 'ADMIN' || tienePanel('administrativos') ? '' : 'none';
+    });
+
+    document.querySelectorAll('a[href="admin.html"]').forEach(link => {
+        link.style.display = data.rol === 'ADMIN' ? '' : 'none';
     });
 }
 

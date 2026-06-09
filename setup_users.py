@@ -55,9 +55,21 @@ def cmd_reset():
         return
 
     users = {
-        "admin":     {"password_hash": hash_password("admin123"),     "rol": "ADMIN"},
-        "consulta":  {"password_hash": hash_password("consulta123"),  "rol": "CONSULTA"},
-        "consulta2": {"password_hash": hash_password("12345678"),    "rol": "CONSULTA"},
+        "admin": {
+            "password_hash": hash_password("admin123"),
+            "rol": "ADMIN",
+            "panels": ["docentes", "maestria", "administrativos"],
+        },
+        "consulta": {
+            "password_hash": hash_password("consulta123"),
+            "rol": "CONSULTA",
+            "panels": ["docentes", "maestria", "administrativos"],
+        },
+        "consulta2": {
+            "password_hash": hash_password("12345678"),
+            "rol": "CONSULTA",
+            "panels": ["docentes", "maestria"],
+        },
     }
     save_users(users)
     print(f"✅ Usuarios creados en: {USERS_FILE}")
