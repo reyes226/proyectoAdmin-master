@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestión de Días Inhabiles</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="css/holidays.css">
+</head>
+<body>
+
+<div class="topbar">
+    <div class="topbar-left">
+        <img src="assets/img/escudo_buap_negativo.png" alt="BUAP" class="topbar-logo">
+        <div class="topbar-titles">
+            <span class="inst">Facultad de Administración · BUAP</span>
+            <span class="title">Gestión de Días Inhabiles</span>
+        </div>
+    </div>
+    <div class="topbar-right">
+        <a class="btn-nav" href="admin.html">Panel Admin</a>
+        <button onclick="logout()">Cerrar sesión</button>
+    </div>
+</div>
+
+<div class="wrapper">
+    <div class="holidays-container">
+        <!-- ── Selector de Mes y Año ── -->
+        <div class="calendar-controls">
+            <button id="prev-month" class="btn-month">&lt; Anterior</button>
+            <div class="month-year">
+                <select id="month-select" onchange="changeMonth()">
+                    <option value="0">Enero</option>
+                    <option value="1">Febrero</option>
+                    <option value="2">Marzo</option>
+                    <option value="3">Abril</option>
+                    <option value="4">Mayo</option>
+                    <option value="5">Junio</option>
+                    <option value="6">Julio</option>
+                    <option value="7">Agosto</option>
+                    <option value="8">Septiembre</option>
+                    <option value="9">Octubre</option>
+                    <option value="10">Noviembre</option>
+                    <option value="11">Diciembre</option>
+                </select>
+                <select id="year-select" onchange="changeMonth()"></select>
+            </div>
+            <button id="next-month" class="btn-month">Siguiente &gt;</button>
+        </div>
+
+        <!-- ── Calendario ── -->
+        <div class="calendar-section">
+            <div class="calendar-header">
+                <h3>Calendario <span id="current-month-year"></span></h3>
+            </div>
+            <div class="calendar-wrapper">
+                <table class="calendar-table">
+                    <thead>
+                        <tr>
+                            <th>Lun</th>
+                            <th>Mar</th>
+                            <th>Mié</th>
+                            <th>Jue</th>
+                            <th>Vie</th>
+                            <th>Sáb</th>
+                            <th>Dom</th>
+                        </tr>
+                    </thead>
+                    <tbody id="calendar-body">
+                    </tbody>
+                </table>
+            </div>
+            <div class="calendar-legend">
+                <div class="legend-item">
+                    <div class="legend-box holiday"></div>
+                    <span>Día inhabible</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-box today"></div>
+                    <span>Hoy</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── Panel de Agregar Día ── -->
+        <div class="add-holiday-panel">
+            <div class="panel-header">
+                <h3>Agregar Día Inhabible</h3>
+            </div>
+            <div class="add-holiday-form">
+                <label for="date-input">Selecciona una fecha:</label>
+                <input 
+                    type="date" 
+                    id="date-input" 
+                    class="date-input"
+                >
+                <button id="btn-add-holiday" class="btn-add-holiday">
+                    Agregar Día
+                </button>
+            </div>
+            <div id="add-holiday-message" class="message"></div>
+        </div>
+
+        <!-- ── Panel de Días Inhabiles ── -->
+        <div class="holidays-panel">
+            <div class="panel-header">
+                <h3>Días Inhabiles Registrados</h3>
+            </div>
+
+            <!-- ── Filtros y Búsqueda ── -->
+            <div class="filter-section">
+                <div class="filter-group">
+                    <label for="month-filter">Filtrar por mes:</label>
+                    <select id="month-filter" onchange="filterHolidays()">
+                        <option value="">Todos los meses</option>
+                        <option value="0">Enero</option>
+                        <option value="1">Febrero</option>
+                        <option value="2">Marzo</option>
+                        <option value="3">Abril</option>
+                        <option value="4">Mayo</option>
+                        <option value="5">Junio</option>
+                        <option value="6">Julio</option>
+                        <option value="7">Agosto</option>
+                        <option value="8">Septiembre</option>
+                        <option value="9">Octubre</option>
+                        <option value="10">Noviembre</option>
+                        <option value="11">Diciembre</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="search-input">Buscar:</label>
+                    <input 
+                        type="text" 
+                        id="search-input" 
+                        class="search-input"
+                        placeholder="Buscar por fecha o día..."
+                        onkeyup="filterHolidays()"
+                    >
+                </div>
+            </div>
+
+            <!-- ── Lista de Días Inhabiles ── -->
+            <div id="holidays-list" class="holidays-list">
+                <p class="empty-message">Cargando días inhabiles...</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="js/auth.js"></script>
+<script src="js/holidays-admin.js"></script>
+
+</body>
+</html>
