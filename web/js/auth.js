@@ -43,6 +43,10 @@ function aplicarPermisosSesion(data) {
         link.style.display = data.rol === 'ADMIN' || tienePanel('administrativos') ? '' : 'none';
     });
 
+    document.querySelectorAll('a[href="dashboard-verano.html"]').forEach(link => {
+        link.style.display = data.rol === 'ADMIN' || tienePanel('verano') ? '' : 'none';
+    });
+
     document.querySelectorAll('a[href="admin.html"]').forEach(link => {
         link.style.display = data.rol === 'ADMIN' ? '' : 'none';
     });
