@@ -1,0 +1,38 @@
+﻿{
+  "admin": {
+    "password_hash": "pbkdf2:sha256:1000000$DMC4lXI9EnQwk2se$a0b2a63da51863ea71c62bd480d7ef974071e15ecbf37eba82d1876e1e91a319",
+    "rol": "ADMIN",
+    "panels": [
+      "docentes",
+      "maestria",
+      "administrativos",
+      "verano"
+    ]
+  },
+  "consulta": {
+    "password_hash": "pbkdf2:sha256:1000000$dMXJz3fy9SSWuZyk$477a04d4c33cda7f0444e1b732d96e76b886a376038ddce74954b9e7e733ec5d",
+    "rol": "CONSULTA",
+    "panels": [
+      "docentes",
+      "maestria",
+      "administrativos",
+      "verano"
+    ]
+  },
+  "consulta2": {
+    "password_hash": "pbkdf2:sha256:1000000$FqPutQAVLoWgVVpe$d027f7446f8beecf09f0e742f25be7820fda50944eb1295209370facf3e12c4f",
+    "rol": "CONSULTA",
+    "panels": [
+      "docentes",
+      "maestria",
+      "verano"
+    ]
+  },
+  "consulta3": {
+    "password_hash": "scrypt:32768:8:1$7diijS8I5o9m0tkL$5f9d53a4cf4e0d711605b0a0df83c4084668782cbe4648c4f9d4fbcebdbd42cc57b904cbc58ba14c0cc6f7839b75a41b681d5628099f1959ece7129241ad332c",
+    "rol": "CONSULTA",
+    "panels": [
+      "maestria"
+    ]
+  }
+}
