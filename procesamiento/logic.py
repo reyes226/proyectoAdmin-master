@@ -1112,3 +1112,208 @@ def procesar(horario_path: str, registro_path: str, output_dir: str, tipo_horari
 
     logger.info("%s_%s.json generado en %s (tipo: %s)", prefijo, clave, output_dir, tipo_horario)
     return clave
+
+
+def procesar_verano(horario_path: str, registro_path: str, output_dir: str, *, start_date: str, end_date: str) -> str:
+    """
+    Procesa un periodo personalizado (verano) usando un rango de fechas explícito.
+
+    Args:
+        horario_path: ruta al archivo de horarios
+        registro_path: ruta al archivo de registro
+        output_dir: directorio de salida
+        start_date: fecha de inicio (YYYY-MM-DD)
+        end_date: fecha fin (YYYY-MM-DD)
+
+    Returns:
+        clave (str): identificador del resultado, por ejemplo "verano_20260515_20260615"
+    """
+    inicio = time.perf_counter()
+    os.makedirs(output_dir, exist_ok=True)
+
+    try:
+        horarios = pd.read_excel(horario_path, header=None)
+    except Exception as e:
+        raise ValueError(f"No se pudo leer el archivo de horarios: {e}") from e
+
+    try:
+        registro = pd.read_excel(registro_path, header=None)
+    except Exception as e:
+        raise ValueError(f"No se pudo leer el archivo de registro: {e}") from e
+
+    horarios = estandarizar_columnas_horario(horarios)
+    registro = estandarizar_columnas_registro(registro)
+
+    # Validaciones mínimas
+    for col in ('ID_DOCENTE', 'HORA', 'DIA', 'PROFESOR'):
+        if col not in horarios.columns:
+            raise ValueError(f"El archivo de horarios no tiene la columna '{col}'")
+    for col in ('ID_DOCENTE', 'FECHA', 'HORA', 'PROFESOR'):
+        if col not in registro.columns:
+            raise ValueError(f"El archivo de registro no tiene la columna '{col}'")
+
+    horarios['ID_DOCENTE']       = horarios['ID_DOCENTE'].apply(limpiar_id)
+    horarios['HORA_ENTRADA']     = horarios['HORA'].apply(parse_hora_horario)
+    horarios['DIAS_NUM']         = horarios['DIA'].apply(convertir_dias)
+    horarios['CLAVE']            = horarios['PROFESOR'].apply(clave_horario)
+    horarios = horarios.dropna(subset=['HORA_ENTRADA'])
+    horarios['HORA_OFICIAL_MIN'] = horarios['HORA_ENTRADA'].apply(hora_a_minutos)
+
+    registro['ID_DOCENTE']        = registro['ID_DOCENTE'].apply(limpiar_id)
+    registro['FECHA']             = pd.to_datetime(registro['FECHA'], errors='coerce')
+    registro['HORA_REGISTRO']     = registro['HORA'].apply(parse_hora_registro)
+    registro['CLAVE']             = registro['PROFESOR'].apply(clave_registro)
+    registro = registro.dropna(subset=['FECHA'])
+    registro['HORA_REGISTRO_MIN'] = registro['HORA_REGISTRO'].apply(hora_a_minutos)
+
+    if registro.empty:
+        raise ValueError("El archivo de registro no contiene fechas válidas.")
+
+    # Mapear IDs por clave
+    mapa_ids = horarios.drop_duplicates('CLAVE').set_index('CLAVE')['ID_DOCENTE'].to_dict()
+    registro['ID_DOCENTE'] = registro.apply(
+        lambda row: mapa_ids.get(row['CLAVE'], row['ID_DOCENTE']), axis=1
+    )
+
+    # Rango de fechas forzado por parámetros
+    try:
+        fecha_min = pd.to_datetime(start_date).date()
+        fecha_max = pd.to_datetime(end_date).date()
+    except Exception:
+        raise ValueError('start_date o end_date con formato inválido. Use YYYY-MM-DD')
+
+    if fecha_min > fecha_max:
+        raise ValueError('start_date debe ser anterior o igual a end_date')
+
+    rango_fechas = pd.date_range(start=fecha_min, end=fecha_max)
+    clave = f"verano_{fecha_min.strftime('%Y%m%d')}_{fecha_max.strftime('%Y%m%d')}"
+
+    # Cargar días inhabiles
+    dias_inhabiles = cargar_dias_inhabiles()
+
+    # Generar clases esperadas usando solo el rango indicado
+    bloques = []
+    for _, h in horarios.iterrows():
+        dias_set = set(h['DIAS_NUM'])
+        fechas_validas = rango_fechas[rango_fechas.day_of_week.isin(dias_set)]
+        fechas_validas = pd.DatetimeIndex([f for f in fechas_validas if f.strftime('%Y-%m-%d') not in dias_inhabiles])
+        if len(fechas_validas) == 0:
+            continue
+        bloques.append(pd.DataFrame({
+            'ID_DOCENTE':       h['ID_DOCENTE'],
+            'PROFESOR':         h['PROFESOR'],
+            'HORA_OFICIAL':     h['HORA_ENTRADA'],
+            'HORA_OFICIAL_MIN': h['HORA_OFICIAL_MIN'],
+            'FECHA':            fechas_validas.date,
+        }))
+
+    if not bloques:
+        raise ValueError(
+            "No se generaron clases esperadas para el periodo indicado. Revisa los días y horas en el horario."
+        )
+
+    expected = pd.concat(bloques, ignore_index=True)
+
+    # Merge y asignación — reutilizar la lógica de diferencia y ventana
+    reg = registro[registro['HORA_REGISTRO_MIN'].notna()].copy()
+    reg['FECHA_D'] = reg['FECHA'].dt.date
+
+    merged = expected.merge(
+        reg[['ID_DOCENTE', 'FECHA_D', 'HORA_REGISTRO', 'HORA_REGISTRO_MIN']],
+        left_on=['ID_DOCENTE', 'FECHA'],
+        right_on=['ID_DOCENTE', 'FECHA_D'],
+        how='left'
+    )
+    merged['DIF_MINUTOS'] = merged['HORA_REGISTRO_MIN'] - merged['HORA_OFICIAL_MIN']
+
+    in_window = merged[merged['DIF_MINUTOS'].between(-VENTANA_ANTES, VENTANA_DESPUES)].copy()
+    in_window['ABS_DIF'] = in_window['DIF_MINUTOS'].abs()
+
+    in_window_sorted = in_window.sort_values('ABS_DIF').reset_index(drop=True)
+    used_expected, used_registro, assigned = set(), set(), []
+
+    for _, row in in_window_sorted.iterrows():
+        e_key = (row['ID_DOCENTE'], row['FECHA'],   row['HORA_OFICIAL_MIN'])
+        r_key = (row['ID_DOCENTE'], row['FECHA_D'], row['HORA_REGISTRO_MIN'])
+        if e_key not in used_expected and r_key not in used_registro:
+            used_expected.add(e_key)
+            used_registro.add(r_key)
+            assigned.append(row)
+
+    KEY = ['ID_DOCENTE', 'FECHA', 'HORA_OFICIAL_MIN']
+
+    if assigned:
+        best = pd.DataFrame(assigned)
+        best['ESTATUS'] = np.where(best['DIF_MINUTOS'] <= TOLERANCIA_MIN, 'PUNTUAL', 'TOLERANCIA')
+        best['DIF_MINUTOS'] = best['DIF_MINUTOS'].round(2)
+    else:
+        best = pd.DataFrame(columns=KEY + ['HORA_REGISTRO', 'DIF_MINUTOS', 'ESTATUS'])
+
+    reporte_final = expected.merge(
+        best[KEY + ['HORA_REGISTRO', 'DIF_MINUTOS', 'ESTATUS']],
+        on=KEY, how='left'
+    )
+    reporte_final['ESTATUS']       = reporte_final['ESTATUS'].fillna('FALTA')
+    reporte_final['DIF_MINUTOS']   = reporte_final['DIF_MINUTOS'].where(reporte_final['ESTATUS'] != 'FALTA', None)
+    reporte_final['HORA_REGISTRO'] = reporte_final['HORA_REGISTRO'].where(reporte_final['ESTATUS'] != 'FALTA', None)
+
+    reporte_final = reporte_final[
+        ['ID_DOCENTE', 'PROFESOR', 'FECHA', 'HORA_OFICIAL', 'HORA_REGISTRO', 'DIF_MINUTOS', 'ESTATUS']
+    ].sort_values(['PROFESOR', 'FECHA', 'HORA_OFICIAL'])
+
+    # Exportar Excel
+    reporte_path = os.path.join(output_dir, f'reporte_asistencia_verano_{clave}.xlsx')
+    reporte_final.to_excel(reporte_path, index=False)
+
+    # Exportar JSON con misma estructura esperada
+    reporte_final['QUINCENA'] = pd.to_datetime(reporte_final['FECHA']).apply(obtener_quincena)
+
+    por_profesor = contar_por_profesor_con_quincenas(reporte_final)
+    quincena_1   = contar_por_profesor_quincena(reporte_final, 1)
+    quincena_2   = contar_por_profesor_quincena(reporte_final, 2)
+
+    total_registros   = int(reporte_final.shape[0])
+    total_asistencias = int(reporte_final['ESTATUS'].isin(['PUNTUAL', 'TOLERANCIA']).sum())
+    total_faltas      = int((reporte_final['ESTATUS'] == 'FALTA').sum())
+
+    resumen_general = {
+        'total':        total_registros,
+        'asistencia':   round(100 * total_asistencias / total_registros, 2) if total_registros else 0,
+        'falta':        round(100 * total_faltas      / total_registros, 2) if total_registros else 0,
+        'fecha_inicio': str(fecha_min),
+        'fecha_fin':    str(fecha_max),
+    }
+
+    dias_nombres = {0:'Lunes', 1:'Martes', 2:'Miércoles', 3:'Jueves', 4:'Viernes', 5:'Sábado', 6:'Domingo'}
+    reporte_final['DIA_SEMANA_NUM'] = pd.to_datetime(reporte_final['FECHA']).dt.dayofweek
+
+    por_dia_semana = []
+    for num in sorted(dias_nombres):
+        df_dia = reporte_final[reporte_final['DIA_SEMANA_NUM'] == num]
+        if len(df_dia) == 0:
+            continue
+        gp = df_dia['ESTATUS'].value_counts()
+        por_dia_semana.append({
+            'dia':        dias_nombres[num],
+            'PUNTUAL':    int(gp.get('PUNTUAL', 0)),
+            'TOLERANCIA': int(gp.get('TOLERANCIA', 0)),
+            'FALTA':      int(gp.get('FALTA', 0)),
+            'TOTAL':      int(len(df_dia)),
+        })
+
+    out = {
+        'resumen_general': resumen_general,
+        'semestre':        None,
+        'generacion':      None,
+        'por_profesor':    por_profesor,
+        'quincena_1':      quincena_1,
+        'quincena_2':      quincena_2,
+        'por_dia_semana':  por_dia_semana,
+    }
+
+    data_json_path = os.path.join(output_dir, f'data_verano_{clave}.json')
+    with open(data_json_path, 'w', encoding='utf-8') as f:
+        json.dump(out, f, ensure_ascii=False, indent=2)
+
+    logger.info("data_verano_%s.json generado en %s", clave, output_dir)
+    return clave

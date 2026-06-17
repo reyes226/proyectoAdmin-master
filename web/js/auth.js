@@ -58,6 +58,9 @@ async function login() {
     const errorEl  = document.getElementById('error');
     errorEl.textContent = '';
 
+    document.cookie = 'session=; path=/; max-age=0;';
+    document.cookie = 'proyecto_admin_session=; path=/; max-age=0;';
+
     if (!usuario || !password) {
         errorEl.textContent = 'Ingresa usuario y contraseña';
         return;
@@ -102,6 +105,8 @@ async function verificarSesion(rolRequerido = null) {
         const res = await fetch('/api/whoami', { credentials: 'same-origin' });
 
         if (res.status === 401) {
+            document.cookie = 'session=; path=/; max-age=0;';
+            document.cookie = 'proyecto_admin_session=; path=/; max-age=0;';
             window.location.href = 'login.html';
             return null;
         }

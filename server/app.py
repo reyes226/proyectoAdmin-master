@@ -37,6 +37,7 @@ app = Flask(__name__, static_folder=WEB_DIR, static_url_path='')
 
 app.secret_key = os.environ.get('SECRET_KEY') or secrets.token_hex(32)
 app.config.update(
+    SESSION_COOKIE_NAME     = 'proyecto_admin_session',
     SESSION_COOKIE_HTTPONLY = True,
     SESSION_COOKIE_SAMESITE = 'Strict',
     SESSION_COOKIE_SECURE   = os.environ.get('HTTPS', 'false').lower() == 'true',
@@ -56,7 +57,7 @@ def _load_users() -> dict:
             f"Archivo de usuarios no encontrado: {USERS_FILE}\n"
             "Ejecuta: python setup_users.py --reset"
         )
-    with open(USERS_FILE, encoding='utf-8') as f:
+    with open(USERS_FILE, encoding='utf-8-sig') as f:
         return json.load(f)
 
 
@@ -320,6 +321,7 @@ def get_meses():
             if f.startswith('data_') and f.endswith('.json')
             and not f.startswith('data_maestria_doctorado_')
             and not f.startswith('data_admin_')
+            and not f.startswith('data_verano_')
         ]
         meses = sorted([f[5:-5] for f in archivos], reverse=True)
         return jsonify(meses)
@@ -468,6 +470,22 @@ def get_meses_admin():
         return jsonify({'error': 'Error al obtener meses'}), 500
 
 
+@app.route('/api/meses-verano')
+@require_login
+def get_meses_verano():
+    """Devuelve los periodos de Verano disponibles (clave tras data_verano_)."""
+    try:
+        archivos = [
+            f for f in os.listdir(OUTPUT_DIR)
+            if f.startswith('data_verano_') and f.endswith('.json')
+        ]
+        meses = sorted([f[len('data_verano_'):-5] for f in archivos], reverse=True)
+        return jsonify(meses)
+    except Exception:
+        logger.exception("Error en /api/meses-verano")
+        return jsonify({'error': 'Error al obtener periodos de Verano'}), 500
+
+
 @app.route('/api/upload-admin', methods=['POST'])
 @require_admin
 def upload_admin():
@@ -506,6 +524,55 @@ def upload_admin():
         return jsonify({'error': 'Error al procesar los archivos. Verifica el formato de los Excel.'}), 500
 
 
+@app.route('/api/upload-verano', methods=['POST'])
+@require_admin
+def upload_verano():
+    """
+    Recibe los dos Excel para periodo de Verano y procesa entre dos fechas dadas.
+    Form-data: 'horario_verano' (xlsx), 'registro_verano' (xlsx), 'start_date' (YYYY-MM-DD), 'end_date' (YYYY-MM-DD)
+    """
+    _validate_csrf()
+
+    horario = request.files.get('horario_verano')
+    registro = request.files.get('registro_verano')
+    start_date = request.form.get('start_date')
+    end_date = request.form.get('end_date')
+
+    if not horario or not registro:
+        return jsonify({'error': 'Se requieren ambos archivos'}), 400
+
+    for archivo, nombre in [(horario, 'horario_verano'), (registro, 'registro_verano')]:
+        if not archivo.filename.lower().endswith('.xlsx'):
+            return jsonify({'error': f'El archivo {nombre} debe ser .xlsx'}), 400
+        if archivo.mimetype and archivo.mimetype not in _XLSX_MIMES:
+            return jsonify({'error': f'El tipo del archivo {nombre} no es válido'}), 400
+
+    # Validar fechas
+    if not start_date or not end_date:
+        return jsonify({'error': 'Se requieren start_date y end_date en formato YYYY-MM-DD'}), 400
+    try:
+        sd = datetime.strptime(start_date, '%Y-%m-%d').date()
+        ed = datetime.strptime(end_date, '%Y-%m-%d').date()
+    except Exception:
+        return jsonify({'error': 'Formato de fecha inválido. Use YYYY-MM-DD'}), 400
+
+    h_path = os.path.join(UPLOAD_DIR, 'horario_verano.xlsx')
+    r_path = os.path.join(UPLOAD_DIR, 'registro_verano.xlsx')
+    horario.save(h_path)
+    registro.save(r_path)
+
+    try:
+        importlib.reload(procesamiento_logic)
+        clave = procesamiento_logic.procesar_verano(h_path, r_path, OUTPUT_DIR, start_date=sd.isoformat(), end_date=ed.isoformat())
+        logger.info("Verano procesado: %s por %s", clave, session.get('usuario'))
+        return jsonify({'ok': True, 'mes': clave})
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception:
+        logger.exception("Error al procesar archivos de Verano")
+        return jsonify({'error': 'Error al procesar los archivos. Verifica el formato de los Excel.'}), 500
+
+
 @app.route('/api/delete-admin/<mes>', methods=['DELETE'])
 @require_admin
 def delete_mes_admin(mes):
@@ -523,6 +590,21 @@ def delete_mes_admin(mes):
             eliminados.append(nombre)
             logger.info("Archivo admin eliminado: %s por %s", nombre, session.get('usuario'))
 
+    return jsonify({'ok': True, 'eliminados': eliminados})
+
+
+@app.route('/api/delete-verano/<clave>', methods=['DELETE'])
+@require_admin
+def delete_verano(clave):
+    """Elimina JSON y Excel de un periodo Verano. Clave: la parte usada en data_verano_{clave}.json"""
+    _validate_csrf()
+    eliminados = []
+    for nombre in [f'data_verano_{clave}.json', f'reporte_asistencia_verano_{clave}.xlsx']:
+        path = os.path.join(OUTPUT_DIR, nombre)
+        if os.path.exists(path):
+            os.remove(path)
+            eliminados.append(nombre)
+            logger.info("Archivo verano eliminado: %s por %s", nombre, session.get('usuario'))
     return jsonify({'ok': True, 'eliminados': eliminados})
 
 

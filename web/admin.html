@@ -179,6 +179,68 @@
         </div>
     </div>
 
+    <!-- ── Procesar Verano ── -->
+    <div class="section-divider"><h2>Periodo — Verano</h2></div>
+
+    <div class="card">
+        <div class="card-header">
+            <h2>Procesar periodo de Verano</h2>
+            <p>Sube los archivos Excel y especifica las fechas de inicio y fin (ej. 2026-05-15 → 2026-06-15).</p>
+        </div>
+
+        <div class="upload-grid">
+            <div class="file-field">
+                <label>Horario (Verano)</label>
+                <div class="file-drop" id="drop-horario-verano">
+                    <input type="file" accept=".xlsx" id="file-horario-verano"
+                           onchange="onFileSelect('horario_verano', this)">
+                    <div class="drop-label">Selecciona o arrastra el archivo</div>
+                    <div class="drop-hint">.xlsx · Horario</div>
+                    <div class="drop-name" id="name-horario-verano"></div>
+                </div>
+            </div>
+            <div class="file-field">
+                <label>Registro de asistencia (Verano)</label>
+                <div class="file-drop" id="drop-registro-verano">
+                    <input type="file" accept=".xlsx" id="file-registro-verano"
+                           onchange="onFileSelect('registro_verano', this)">
+                    <div class="drop-label">Selecciona o arrastra el archivo</div>
+                    <div class="drop-hint">.xlsx · Registro</div>
+                    <div class="drop-name" id="name-registro-verano"></div>
+                </div>
+            </div>
+        </div>
+
+        <div style="display:flex; gap:10px; margin-bottom:14px; align-items:center;">
+            <div>
+                <label>Fecha inicio</label>
+                <input type="date" id="start-date-verano">
+            </div>
+            <div>
+                <label>Fecha fin</label>
+                <input type="date" id="end-date-verano">
+            </div>
+        </div>
+
+        <button class="btn-process" id="btn-process-verano" onclick="procesarArchivosVerano()" disabled>
+            Procesar periodo Verano
+        </button>
+
+        <div class="status-box" id="status-box-verano">
+            <span id="status-text-verano"></span>
+            <div class="progress-wrap" id="progress-wrap-verano" style="display:none">
+                <div class="progress-bar" id="progress-bar-verano"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Periodos Verano registrados ── -->
+    <div class="card">
+        <div id="mes-list-verano-container">
+            <p class="empty-state">Cargando...</p>
+        </div>
+    </div>
+
 </div>
 
 <script src="js/auth.js"></script>
@@ -190,6 +252,7 @@ const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio',
 let _files = { horario: null, registro: null };
 let _files_maestria = { horario_maestria: null, registro_maestria: null };
 let _files_admin = { horario_admin: null, registro_admin: null };
+let _files_verano = { horario_verano: null, registro_verano: null };
 
 function validarArchivoXlsx(file) {
     return file.name.toLowerCase().endsWith('.xlsx');
@@ -220,6 +283,11 @@ function onFileSelect(tipo, input) {
         document.getElementById(`name-${idKey}`).textContent = file.name;
         document.getElementById('btn-process-admin').disabled =
             !(_files_admin.horario_admin && _files_admin.registro_admin);
+    } else if (tipo.includes('verano')) {
+        _files_verano[tipo] = file;
+        document.getElementById(`drop-${idKey}`).classList.add('selected');
+        document.getElementById(`name-${idKey}`).textContent = file.name;
+        document.getElementById('btn-process-verano').disabled = !(_files_verano.horario_verano && _files_verano.registro_verano);
     } else {
         _files[tipo] = file;
         document.getElementById(`drop-${idKey}`).classList.add('selected');
@@ -267,6 +335,25 @@ function onFileSelect(tipo, input) {
 ['horario_admin', 'registro_admin'].forEach(tipo => {
     const idKey = tipo.replace(/_/g, '-');
     const drop = document.getElementById(`drop-${idKey}`);
+    drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('drag-over'); });
+    drop.addEventListener('dragleave', () => drop.classList.remove('drag-over'));
+    drop.addEventListener('drop', e => {
+        e.preventDefault();
+        drop.classList.remove('drag-over');
+        const file = e.dataTransfer.files[0];
+        if (!file || !validarArchivoXlsx(file)) return;
+        const input = document.getElementById(`file-${idKey}`);
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        input.files = dt.files;
+        onFileSelect(tipo, input);
+    });
+});
+
+['horario_verano', 'registro_verano'].forEach(tipo => {
+    const idKey = tipo.replace(/_/g, '-');
+    const drop = document.getElementById(`drop-${idKey}`);
+    if (!drop) return;
     drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('drag-over'); });
     drop.addEventListener('dragleave', () => drop.classList.remove('drag-over'));
     drop.addEventListener('drop', e => {
@@ -569,6 +656,151 @@ function resetInputsAdmin() {
     document.getElementById('btn-process-admin').disabled = true;
 }
 
+// ── Procesar Verano ──
+async function procesarArchivosVerano() {
+    const btn  = document.getElementById('btn-process-verano');
+    const box  = document.getElementById('status-box-verano');
+    const txt  = document.getElementById('status-text-verano');
+    const wrap = document.getElementById('progress-wrap-verano');
+    const bar  = document.getElementById('progress-bar-verano');
+
+    btn.disabled = true;
+    box.className = 'status-box loading';
+    box.style.display = 'block';
+    txt.textContent = 'Procesando periodo Verano... esto puede tardar unos segundos';
+    wrap.style.display = 'block';
+    bar.style.width = '0%';
+
+    let prog = 0;
+    const ticker = setInterval(() => {
+        prog = Math.min(prog + Math.random() * 7, 85);
+        bar.style.width = prog + '%';
+    }, 300);
+
+    const start = document.getElementById('start-date-verano').value;
+    const end = document.getElementById('end-date-verano').value;
+    if (!start || !end) {
+        clearInterval(ticker);
+        box.className = 'status-box error';
+        txt.textContent = 'Selecciona fecha inicio y fin.';
+        btn.disabled = false;
+        return;
+    }
+
+    const form = new FormData();
+    form.append('horario_verano',  _files_verano.horario_verano);
+    form.append('registro_verano', _files_verano.registro_verano);
+    form.append('start_date', start);
+    form.append('end_date', end);
+
+    try {
+        const res = await fetch('/api/upload-verano', {
+            method:  'POST',
+            credentials: 'same-origin',
+            headers: { 'X-CSRF-Token': getCsrfToken() },
+            body:    form,
+        });
+        clearInterval(ticker);
+        bar.style.width = '100%';
+
+        let data;
+        try { data = await res.json(); } catch {
+            box.className = 'status-box error';
+            txt.textContent = `Error del servidor (${res.status}).`;
+            btn.disabled = false;
+            setTimeout(() => { wrap.style.display = 'none'; }, 900);
+            return;
+        }
+
+        if (!res.ok || data.error) {
+            box.className = 'status-box error';
+            txt.textContent = 'Error: ' + (data.error || 'Error desconocido');
+        } else {
+            box.className = 'status-box success';
+            txt.textContent = `Periodo Verano procesado: ${data.mes}`;
+            resetInputsVerano();
+            cargarMesesVerano();
+        }
+    } catch (err) {
+        clearInterval(ticker);
+        box.className = 'status-box error';
+        txt.textContent = 'No se pudo conectar al servidor: ' + err.message;
+    }
+
+    btn.disabled = false;
+    setTimeout(() => { wrap.style.display = 'none'; }, 900);
+}
+
+function resetInputsVerano() {
+    _files_verano = { horario_verano: null, registro_verano: null };
+    ['horario_verano', 'registro_verano'].forEach(t => {
+        const idKey = t.replace(/_/g, '-');
+        const el = document.getElementById(`drop-${idKey}`);
+        if (el) el.classList.remove('selected');
+        const nameEl = document.getElementById(`name-${idKey}`);
+        if (nameEl) nameEl.textContent = '';
+        const input = document.getElementById(`file-${idKey}`);
+        if (input) input.value = '';
+    });
+    document.getElementById('btn-process-verano').disabled = true;
+}
+
+// ── Lista de periodos Verano ──
+async function cargarMesesVerano() {
+    const container = document.getElementById('mes-list-verano-container');
+    try {
+        const res   = await fetch('/api/meses-verano', { credentials: 'same-origin' });
+        if (res.status === 401) { window.location.href = 'login.html'; return; }
+        const claves = await res.json();
+
+        if (!claves.length) {
+            container.innerHTML = '<p class="empty-state">No hay periodos de Verano procesados aún.</p>';
+            return;
+        }
+
+        const items = claves.map(clave => {
+            const nombre = clave.replace(/_/g, ' ');
+            return `
+            <div class="mes-item" id="item-verano-${clave}">
+                <div>
+                    <div class="mes-nombre">Periodo ${nombre}</div>
+                    <div class="mes-sub">${clave}</div>
+                </div>
+                <div class="mes-actions">
+                    <a class="btn-ver" href="dashboard-verano.html?mes=${encodeURIComponent(clave)}">Ver Dashboard</a>
+                    <button class="btn-del" onclick="eliminarMesVerano('${clave}','${nombre}')">Eliminar</button>
+                </div>
+            </div>`;
+        }).join('');
+
+        container.innerHTML = `<div class="mes-list">${items}</div>`;
+    } catch {
+        container.innerHTML = '<p class="empty-state">Error al cargar los periodos.</p>';
+    }
+}
+
+async function eliminarMesVerano(clave, nombre) {
+    if (!confirm(`¿Eliminar los datos de ${nombre} (Verano)?\nEsta acción no se puede deshacer.`)) return;
+    try {
+        const res = await fetch(`/api/delete-verano/${clave}`, {
+            method:  'DELETE',
+            credentials: 'same-origin',
+            headers: { 'X-CSRF-Token': getCsrfToken() },
+        });
+        // Nota: usa el endpoint genérico delete; si se desea uno específico se puede agregar.
+        if (res.status === 401) { window.location.href = 'login.html'; return; }
+        if ((await res.json()).ok) {
+            document.getElementById(`item-verano-${clave}`)?.remove();
+            const lista = document.getElementById('mes-list-verano-container').querySelector('.mes-list');
+            if (lista && !lista.children.length)
+                document.getElementById('mes-list-verano-container').innerHTML =
+                    '<p class="empty-state">No hay periodos de Verano procesados aún.</p>';
+        }
+    } catch (e) {
+        alert('Error al eliminar: ' + e.message);
+    }
+}
+
 // ── Meses personal administrativo ──
 async function cargarMesesAdmin() {
     const container = document.getElementById('mes-list-admin-container');
@@ -711,6 +943,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         cargarMeses();
         cargarMesesMaestria();
         cargarMesesAdmin();
+        cargarMesesVerano();
     }
 });
 </script>
